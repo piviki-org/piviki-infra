@@ -16,7 +16,7 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
       pickup address (AD-18).
 - [ ] In **each** repository, Settings > Advanced Security: Dependabot alerts **on**, Dependabot
       security updates **on**, Secret scanning **on**, Push protection **on**.
-- [ ] Team `piviki-org/founders` with both founders (Org > Teams), named in
+- [ ] Team `piviki-org/admins` with both founders (Org > Teams), named in
       `piviki-core/.github/CODEOWNERS`. In `piviki-core`, a ruleset on `main`: require a pull
       request, **require review from Code Owners**, block force pushes and deletion. A change
       under `deploy/` runs as root on every host (AD-21), so the other founder reviews it.

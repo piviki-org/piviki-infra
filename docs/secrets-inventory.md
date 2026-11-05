@@ -36,7 +36,6 @@ Non-secret runtime configuration in the same files (environment-specific, AD-17)
 |---|---|---|
 | `DEPLOY_SSH_KEY` | Private ed25519 key of the host's `deploy` user | Generated on a founder's machine; public half passed to `bootstrap.sh --deploy-key`. |
 | `CF_ACCESS_DEPLOY_CLIENT_ID`, `CF_ACCESS_DEPLOY_CLIENT_SECRET` | Access service token for `ssh-<env>` | `tofu output -json deploy_service_token` |
-| `CF_ACCESS_CHECKS_CLIENT_ID`, `CF_ACCESS_CHECKS_CLIENT_SECRET` | Access service token allowed on the admin app, for deploy checks | `tofu output -json checks_service_token` |
 | `CF_TUNNEL_READ_TOKEN` | Cloudflare API token, account permission "Cloudflare Tunnel: Read" only | Created by hand in the Cloudflare dashboard |
 
 `GITHUB_TOKEN` is the workflow's own token; nothing else is stored in repository-level secrets.
@@ -55,10 +54,11 @@ AWS, Cloudflare, GitHub and Bitwarden are reached with each founder's own login 
 
 ## Rotation and revocation
 
-- Access service tokens (`deploy_service_token`, `checks_service_token`) expire one year after
-  creation. A month before (calendar reminder), a founder runs
-  `tofu apply -replace=cloudflare_zero_trust_access_service_token.<name>`, stores the new id and
-  secret in Bitwarden, then updates the GitHub Environment secrets.
+- The Access deploy service token (`deploy_service_token`) expires one year after creation. A
+  month before (calendar reminder), a founder runs
+  `tofu apply -replace=cloudflare_zero_trust_access_service_token.deploy`, stores the new id and
+  secret in Bitwarden, then updates the GitHub Environment secrets. No token passes Access on
+  `admin`: only librarians with a one-time PIN do (decided 2026-11-04).
 
 - On the move to OVH (AD-17 step 4): new tunnel token, deploy key, service tokens and GHCR
   credentials for OVH; the AWS ones are revoked.

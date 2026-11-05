@@ -91,13 +91,12 @@ tofu apply
 tofu output -raw tunnel_token            # -> host cloudflared.env
 tofu output tunnel_id                    # -> GitHub var CF_TUNNEL_ID
 tofu output -json deploy_service_token   # -> GitHub secrets CF_ACCESS_DEPLOY_*
-tofu output -json checks_service_token   # -> GitHub secrets CF_ACCESS_CHECKS_*
 ```
 
 Store each output in Bitwarden (`production` collection) under its inventory name.
 
-The service tokens expire one year after creation (`duration = "8760h"` in `access.tf`). Note
-the expiry date on each Bitwarden item and put a reminder in both founders' calendars a month
+The deploy service token expires one year after creation (`duration = "8760h"` in `access.tf`). Note
+the expiry date on its Bitwarden item and put a reminder in both founders' calendars a month
 before it; rotation is in `secrets-inventory.md`.
 
 ## 3. Host configuration (`/etc/piviki`)
@@ -153,8 +152,7 @@ printf 'ssh-prod.piviki.fi %s\n' "$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_ke
       (the line from §3), `PUBLIC_RECORDS_ENABLED=false`.
 - [ ] Secrets: `DEPLOY_SSH_KEY` (contents of `piviki-prod-deploy`, then delete the local file
       after storing it in Bitwarden), `CF_ACCESS_DEPLOY_CLIENT_ID`,
-      `CF_ACCESS_DEPLOY_CLIENT_SECRET`, `CF_ACCESS_CHECKS_CLIENT_ID`,
-      `CF_ACCESS_CHECKS_CLIENT_SECRET`, `CF_TUNNEL_READ_TOKEN`.
+      `CF_ACCESS_DEPLOY_CLIENT_SECRET`, `CF_TUNNEL_READ_TOKEN`.
 
 ## 5. First deploy (records still absent)
 
@@ -200,8 +198,13 @@ tofu plan    # expect: No changes.
 ```
 
 Set the GitHub Environment variable `PUBLIC_RECORDS_ENABLED=true`, then run the deploy workflow
-again with the **same tag**: now the public HTTP checks run too (through Access with the checks
-token on admin). Record its URL: `______`
+again with the **same tag**: now the public HTTP checks run too. On `admin` they only confirm that
+an unauthenticated request is redirected to `<team>.cloudflareaccess.com` (nothing passes Access
+without a PIN); the admin-side checks ran in-network on the host. Record its URL: `______`
+
+- [ ] The run's checks show `admin is behind Access (302 to https://<team>.cloudflareaccess.com/…)`.
+      If Access answers a non-browser request differently (another status, no redirect), record
+      what it returned and adjust `expect_access_redirect` in `piviki-core/deploy/checks.sh`.
 
 ## 8. Production verification (story verify line, item by item)
 
@@ -217,8 +220,8 @@ Record each result in Implementation Notes.
        `gh api "repos/piviki-org/piviki-core/deployments?environment=production&task=deploy:image&per_page=1" --jq '.[0].payload.tag'`
 3. [ ] `curl -s -o /dev/null -w '%{http_code}\n' https://api.piviki.fi/api/v1/health` -> `200`;
        `/`, `/admin`, `/api/librarians`, `/api/graphql` on `api.piviki.fi` -> `404`.
-4. [ ] The deploy run's checks show `first-register` 404 (in-network and public) and
-       `exactly one connector`.
+4. [ ] The deploy run's checks show `first-register` 404 (in-network, in the `deploy` step),
+       `admin is behind Access` and `exactly one connector`.
 5. [ ] Outside scan: only `22/tcp` open (`runbook-host-setup.md` §5.1).
 6. [ ] Core cannot reach the instance metadata service (`runbook-host-setup.md` §5.2).
 7. [ ] `https://piviki.fi` still shows the coming-soon page, and `dig` matches the values

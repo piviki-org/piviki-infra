@@ -1,6 +1,8 @@
 # Cloudflare Access (AD-7): email one-time PIN on all of the admin host; the SSH host accepts only
-# the deploy service token. A separate checks token may pass the admin app so deploy checks can
-# reach Caddy; it still meets the librarian password inside.
+# the deploy service token. Deploy checks never pass Access on admin: the public check only
+# confirms admin redirects to the Access login, and the admin-side checks run in-network on the
+# host (decided 2026-11-04). The only planned exception is the one-time import script's own
+# service token (AD-7, epic-initial-load), revoked after the initial load.
 
 resource "cloudflare_zero_trust_access_identity_provider" "otp" {
   count      = var.otp_identity_provider_id == null ? 1 : 0
@@ -23,12 +25,6 @@ resource "cloudflare_zero_trust_access_service_token" "deploy" {
   duration   = "8760h"
 }
 
-resource "cloudflare_zero_trust_access_service_token" "checks" {
-  account_id = var.account_id
-  name       = "piviki-prod-deploy-checks"
-  duration   = "8760h"
-}
-
 # Librarians enter a one-time PIN about every 3 days per device (sign-in friction, decided
 # 2026-11-04). The Payload librarian session behind it stays about 8 hours (AD-7).
 resource "cloudflare_zero_trust_access_policy" "librarians" {
@@ -39,15 +35,6 @@ resource "cloudflare_zero_trust_access_policy" "librarians" {
   include          = [for email in var.librarian_emails : { email = { email = email } }]
   require = [
     { login_method = { id = local.otp_identity_provider_id } },
-  ]
-}
-
-resource "cloudflare_zero_trust_access_policy" "checks" {
-  account_id = var.account_id
-  name       = "piviki-prod deploy checks (service token)"
-  decision   = "non_identity"
-  include = [
-    { service_token = { token_id = cloudflare_zero_trust_access_service_token.checks.id } },
   ]
 }
 
@@ -74,7 +61,6 @@ resource "cloudflare_zero_trust_access_application" "admin" {
   service_auth_401_redirect  = true
   policies = [
     { id = cloudflare_zero_trust_access_policy.librarians.id, precedence = 1 },
-    { id = cloudflare_zero_trust_access_policy.checks.id, precedence = 2 },
   ]
 }
 

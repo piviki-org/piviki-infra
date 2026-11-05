@@ -117,7 +117,7 @@ What each layer refuses:
 
 | Layer | Refuses |
 |---|---|
-| Cloudflare Access | Anyone on `admin` without a one-time PIN for a listed email (or the checks token); anyone on `ssh-prod` without the deploy token |
+| Cloudflare Access | Anyone on `admin` without a one-time PIN for a listed email (no token passes it); anyone on `ssh-prod` without the deploy token |
 | `cloudflared` | Requests to `admin` and `ssh-prod` without a valid Access token; any other host name (404) |
 | Caddy | Unknown hosts, backslashes in paths, first-register, GraphQL, a foreign `Origin` on admin (403), anything on `api` outside `/api/v1/*` (all 404 unless noted) |
 | core | Every operation not explicitly allowed (deny-by-default collections), first-register (again), GraphQL, running jobs over HTTP |
@@ -185,7 +185,7 @@ sequenceDiagram
   H->>H: start the stack, wait for health
   H->>H: host-checks.mjs (first-register 404, allowlist, health, Origin, unknown host)
   H-->>D: record the tag (only if checks pass)
-  D->>D: checks.sh: public URLs + exactly one Tunnel connector
+  D->>D: checks.sh: admin redirects to Access, api allowlist, one Tunnel connector
   D->>D: GitHub deployment record with the tag
 ```
 

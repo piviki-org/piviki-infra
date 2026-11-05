@@ -107,7 +107,9 @@ run_checks() {
 
   log "host checks"
   if nft list table inet piviki_host >/dev/null 2>&1; then ok "nftables table inet piviki_host loaded"; else bad "nftables table missing"; fi
-  if nft list chain inet piviki_host input 2>/dev/null | grep -q 'policy drop'; then ok "inbound policy drop"; else bad "inbound policy is not drop"; fi
+  # Never `cmd | grep -q` under pipefail: grep exits at the first match, cmd dies of SIGPIPE
+  # (141) and the pipeline reports failure for a match. Capture the output, then match it.
+  if [[ "$(nft list chain inet piviki_host input 2>/dev/null)" == *"policy drop"* ]]; then ok "inbound policy drop"; else bad "inbound policy is not drop"; fi
 
   local listening
   listening="$(ss -Htlnp 2>/dev/null | awk '{print $4}' | grep -Ev '^(127\.|\[::1\]|\[::ffff:127\.)' | grep -Ev ':22$' || true)"
@@ -116,7 +118,7 @@ run_checks() {
   if [[ "$(sshd -T 2>/dev/null | awk '/^passwordauthentication /{print $2}')" == no ]]; then ok "sshd: password authentication off"; else bad "sshd: password authentication on"; fi
   if [[ "$(sshd -T 2>/dev/null | awk '/^permitrootlogin /{print $2}')" == no ]]; then ok "sshd: root login off"; else bad "sshd: root login allowed"; fi
 
-  if id -nG "$DEPLOY_USER" 2>/dev/null | grep -qw docker; then bad "deploy user is in the docker group"; else ok "deploy user not in docker group"; fi
+  if [[ " $(id -nG "$DEPLOY_USER" 2>/dev/null) " == *" docker "* ]]; then bad "deploy user is in the docker group"; else ok "deploy user not in docker group"; fi
 
   # AD-21: the piviki-core checkout is root-owned, writable by root only, and clean; sudoers and
   # sshd name its deploy script, not a copy.
@@ -142,7 +144,7 @@ run_checks() {
     done < <(manifest_entries)
     for f in "$ETC_DIR"/*.env; do
       [[ -e "$f" ]] || continue
-      manifest_entries | awk '{print $1}' | grep -qx "$(basename "$f")" || extra+="$(basename "$f") "
+      grep -qx "$(basename "$f")" <<<"$(manifest_entries | awk '{print $1}')" || extra+="$(basename "$f") "
     done
     if [[ -z "$extra" ]]; then ok "env files match env-manifest"; else bad "env files not in env-manifest: $extra"; fi
   fi
@@ -152,7 +154,7 @@ run_checks() {
     if [[ "$(stat -c '%a %U' "$f")" == "600 root" ]]; then ok "$(basename "$f") is 0600 root"; else bad "$(basename "$f") is not 0600 root"; fi
   done
 
-  if apt-config dump 2>/dev/null | grep -q 'APT::Periodic::Unattended-Upgrade "1"'; then ok "unattended upgrades on"; else bad "unattended upgrades off"; fi
+  if grep -q 'APT::Periodic::Unattended-Upgrade "1"' <<<"$(apt-config dump 2>/dev/null)"; then ok "unattended upgrades on"; else bad "unattended upgrades off"; fi
   if snap list amazon-ssm-agent >/dev/null 2>&1; then bad "amazon-ssm-agent is installed"; else ok "no SSM agent"; fi
 
   # AWS only: IMDSv2 required (an IMDSv1 request is refused) and no instance role attached.

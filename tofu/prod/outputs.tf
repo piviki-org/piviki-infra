@@ -18,11 +18,3 @@ output "deploy_service_token" {
   sensitive = true
 }
 
-output "checks_service_token" {
-  description = "GitHub Environment secrets CF_ACCESS_CHECKS_CLIENT_ID / _SECRET."
-  value = {
-    client_id     = cloudflare_zero_trust_access_service_token.checks.client_id
-    client_secret = cloudflare_zero_trust_access_service_token.checks.client_secret
-  }
-  sensitive = true
-}

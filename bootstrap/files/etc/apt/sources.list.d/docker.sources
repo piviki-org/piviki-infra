@@ -1,0 +1,7 @@
+# Installed by piviki-infra bootstrap/bootstrap.sh; edit it in the repository, not on the host.
+# @UBUNTU_CODENAME@ is filled in from /etc/os-release.
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: @UBUNTU_CODENAME@
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc

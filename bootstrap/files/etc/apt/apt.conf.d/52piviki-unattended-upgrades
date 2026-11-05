@@ -1,0 +1,13 @@
+// Installed by piviki-infra bootstrap/bootstrap.sh; edit it in the repository, not on the host.
+// Security updates install daily; the host reboots for them at 03:30 UTC when required.
+// Every service has restart: unless-stopped, so the stack returns after a reboot.
+// ${distro_codename} is unattended-upgrades' own variable, not a bootstrap placeholder.
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Ubuntu,archive=${distro_codename}-security";
+        "origin=UbuntuESMApps,archive=${distro_codename}-apps-security";
+        "origin=UbuntuESM,archive=${distro_codename}-infra-security";
+        "origin=Docker,label=Docker CE";
+};
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";

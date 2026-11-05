@@ -106,6 +106,12 @@ commit, points sudoers and the deploy user's forced command at
 `/opt/piviki/core/deploy/deploy.sh`, links `/usr/local/sbin/piviki-compose` to the checkout,
 and creates exactly the env files listed in `/opt/piviki/core/deploy/env-manifest`, empty.
 
+Every config file it installs (firewall, sshd, sudoers, Docker, apt, journald) comes from
+`bootstrap/files/`, at the same path. Change one there, by PR: the `host-files` workflow
+validates it with the hosts' own programs before it can be merged, and the bootstrap validates it
+again before it goes live. Never edit one on the host: `--check` reports a file that differs from
+the repository, and the next bootstrap run puts the repository's version back.
+
 The bootstrap is idempotent. It ends by running its checks; all must print `PASS`. Re-run the
 checks at any time with `sudo /opt/piviki/infra/bootstrap/bootstrap.sh --check`.
 

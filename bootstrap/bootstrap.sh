@@ -373,16 +373,19 @@ fi
 
 # The checkout's own files, never copies (AD-21): moving the checkout moves these with it.
 ln -sfn "$CORE_DIR/deploy/piviki-compose" /usr/local/sbin/piviki-compose
-cat >/etc/sudoers.d/piviki-deploy <<EOF
+# Only a rule, no Defaults: Ubuntu's sudo-rs rejects requiretty as unknown and does not list
+# env_reset, and both are already what we need: no tty is required, and the environment is
+# always reset, so the deploy script's PIVIKI_* test overrides never reach it for real.
+# Validated before it is put in place: a broken file in /etc/sudoers.d can break sudo.
+sudoers_tmp="$(mktemp /etc/sudoers.d/.piviki-deploy.XXXXXX)"
+cat >"$sudoers_tmp" <<EOF
 # The deploy user may run exactly one program as root, from the root-owned piviki-core
 # checkout (AD-21); it validates its own arguments.
 ${DEPLOY_USER} ALL=(root) NOPASSWD: ${DEPLOY_CMD}
-Defaults:${DEPLOY_USER} !requiretty
-# The deploy script's PIVIKI_* test overrides never reach it from a real invocation.
-Defaults:${DEPLOY_USER} env_reset
 EOF
-chmod 0440 /etc/sudoers.d/piviki-deploy
-visudo -cf /etc/sudoers.d/piviki-deploy >/dev/null
+chmod 0440 "$sudoers_tmp"
+visudo -cf "$sudoers_tmp" >/dev/null || { rm -f "$sudoers_tmp"; die "sudoers rule failed validation"; }
+mv -f "$sudoers_tmp" /etc/sudoers.d/piviki-deploy
 
 # ---------------------------------------------------------------------------------------------
 log "configuration and state directories"

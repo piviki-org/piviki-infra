@@ -1,0 +1,60 @@
+# Validates the bootstrap's host config files (bootstrap/files/) with the programs that read them
+# on a host, before they can reach one: visudo (sudo-rs), nft, sshd, dockerd, apt-config. Runs in
+# the hosts' Ubuntu release with the hosts' packages, because a validator from another sudo or
+# release can accept what the host rejects (the sudoers lockout of 2026-11-05). Also shellchecks
+# the bootstrap scripts. Changes nothing anywhere.
+name: host-files
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-files-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    container:
+      # The hosts' release (AD-17: Ubuntu LTS). Move this with the hosts.
+      image: ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
+      # `nft -c` needs CAP_NET_ADMIN even to check a file; nothing is loaded.
+      options: --cap-add NET_ADMIN
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the hosts' packages
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends ca-certificates curl sudo-rs openssh-server nftables shellcheck
+          # Docker from Docker's repository, through the bootstrap's own docker.sources.
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          . /etc/os-release
+          sed "s/@UBUNTU_CODENAME@/${UBUNTU_CODENAME:-$VERSION_CODENAME}/" \
+            bootstrap/files/etc/apt/sources.list.d/docker.sources >/etc/apt/sources.list.d/docker.sources
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends docker-ce
+          # sshd -t refuses to run without host keys and its privilege separation directory.
+          ssh-keygen -A
+          install -d -m 0755 /run/sshd
+      - name: Versions
+        run: |
+          sudo --version | head -1
+          sudo --version | head -1 | grep -q '^sudo-rs ' # the hosts' sudo, not classic sudo
+          nft --version
+          sshd -V 2>&1 | head -1
+          dockerd --version
+      - run: bootstrap/validate-files.sh
+      - run: shellcheck -x bootstrap/*.sh

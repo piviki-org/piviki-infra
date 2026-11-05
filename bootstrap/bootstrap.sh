@@ -5,7 +5,7 @@
 #   sudo git clone https://github.com/piviki-org/piviki-infra /opt/piviki/infra
 #   sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment production \
 #        --core-commit <commit on piviki-core main> \
-#        --deploy-key /root/deploy_ed25519.pub [--admin-user ubuntu]
+#        --deploy-key /root/deploy_ed25519.pub [--admin-user <login>]
 #   sudo /opt/piviki/infra/bootstrap/bootstrap.sh --move-core <commit on piviki-core main>
 #   sudo /opt/piviki/infra/bootstrap/bootstrap.sh --check
 #
@@ -16,6 +16,9 @@
 # exactly the env files in the checkout's deploy/env-manifest, empty. It never writes a secret:
 # a founder fills the env files from Bitwarden. --move-core moves the checkout to another commit
 # on main (only a founder does this, never a deploy); it changes nothing else.
+# Every config file it installs is in bootstrap/files/, at its path on the host; --check also
+# reports a host file that differs from the repository. --admin-user defaults to the one the last
+# run recorded, else ubuntu.
 set -euo pipefail
 
 INFRA_DIR=/opt/piviki/infra
@@ -30,13 +33,13 @@ DEPLOY_USER=deploy
 
 environment=""
 deploy_key=""
-admin_user="ubuntu"
+admin_user=""
 core_commit=""
 move_core=""
 check_only=false
 
 usage() {
-  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit 64
 }
 
@@ -61,6 +64,43 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 . /etc/os-release
 [[ "${ID:-}" == ubuntu ]] || die "Ubuntu LTS only (found ${ID:-unknown})"
 [[ "$(uname -m)" == x86_64 ]] || die "x86_64 only"
+
+HOST_FILES_DIR="$(cd "$(dirname "$0")" && pwd -P)/files"
+# shellcheck source=bootstrap/host-files.sh
+. "$(dirname "$0")/host-files.sh"
+# The admin login AllowUsers names: a re-run without --admin-user keeps the recorded one, so it
+# never silently switches back to ubuntu and locks out a host whose admin is someone else.
+[[ -n "$admin_user" ]] || admin_user="$(cat "$ETC_DIR/admin-user" 2>/dev/null || true)"
+admin_user="${admin_user:-ubuntu}"
+ADMIN_USER="$admin_user"
+UBUNTU_CODENAME="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+
+# Install bootstrap/files/<path> at /<path> with its HOST_FILES mode: rendered and validated in a
+# temporary file beside it, then renamed into place, so a file that fails validation never goes
+# live (a broken sudoers or sshd file can lock the admin out).
+install_host_file() {
+  local rel="$1" entry mode validator dst="/$1" dir tmp
+  entry="$(host_file_entry "$rel")" || die "$rel is not in HOST_FILES (host-files.sh)"
+  read -r mode validator <<<"$entry"
+  dir="$(dirname "$dst")"
+  [[ -d "$dir" ]] || install -d -m 0755 -o root -g root "$dir"
+  tmp="$(mktemp "$dir/.$(basename "$dst").XXXXXX")"
+  render_host_file "$rel" >"$tmp" || { rm -f "$tmp"; die "$rel: cannot fill in its placeholders"; }
+  chown root:root "$tmp"
+  chmod "$mode" "$tmp"
+  if [[ "$validator" != - ]] && ! "$validator" "$tmp"; then
+    rm -f "$tmp"
+    die "$rel failed validation; $dst left unchanged"
+  fi
+  if cmp -s "$tmp" "$dst"; then
+    rm -f "$tmp"
+    chown root:root "$dst"
+    chmod "$mode" "$dst"
+  else
+    mv -f "$tmp" "$dst"
+    echo "installed $dst"
+  fi
+}
 
 core_git() { git -c safe.directory="$CORE_DIR" -C "$CORE_DIR" "$@"; }
 
@@ -154,6 +194,19 @@ run_checks() {
     if [[ "$(stat -c '%a %U' "$f")" == "600 root" ]]; then ok "$(basename "$f") is 0600 root"; else bad "$(basename "$f") is not 0600 root"; fi
   done
 
+  # Every file from bootstrap/files/ is on the host as the repository has it, with its mode.
+  local entry rel mode
+  for entry in "${HOST_FILES[@]}"; do
+    read -r rel mode _ <<<"$entry"
+    if ! cmp -s "/$rel" <(render_host_file "$rel"); then
+      bad "/$rel differs from bootstrap/files (edited on the host, or bootstrap not re-run)"
+    elif [[ "$(stat -c '%a %U %G' "/$rel")" != "${mode#0} root root" ]]; then
+      bad "/$rel is not mode $mode root:root"
+    else
+      ok "/$rel matches bootstrap/files"
+    fi
+  done
+
   if grep -q 'APT::Periodic::Unattended-Upgrade "1"' <<<"$(apt-config dump 2>/dev/null)"; then ok "unattended upgrades on"; else bad "unattended upgrades off"; fi
   if snap list amazon-ssm-agent >/dev/null 2>&1; then bad "amazon-ssm-agent is installed"; else ok "no SSM agent"; fi
 
@@ -243,24 +296,8 @@ fi
 
 # ---------------------------------------------------------------------------------------------
 log "automatic security updates"
-cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT::Periodic::AutocleanInterval "7";
-EOF
-cat >/etc/apt/apt.conf.d/52piviki-unattended-upgrades <<'EOF'
-// Security updates install daily; the host reboots for them at 03:30 UTC when required.
-// Every service has restart: unless-stopped, so the stack returns after a reboot.
-Unattended-Upgrade::Origins-Pattern {
-        "origin=Ubuntu,archive=${distro_codename}-security";
-        "origin=UbuntuESMApps,archive=${distro_codename}-apps-security";
-        "origin=UbuntuESM,archive=${distro_codename}-infra-security";
-        "origin=Docker,label=Docker CE";
-};
-Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "03:30";
-Unattended-Upgrade::Remove-Unused-Dependencies "true";
-EOF
+install_host_file etc/apt/apt.conf.d/20auto-upgrades
+install_host_file etc/apt/apt.conf.d/52piviki-unattended-upgrades
 systemctl enable --now unattended-upgrades.service >/dev/null
 
 # ---------------------------------------------------------------------------------------------
@@ -270,63 +307,22 @@ if [[ ! -s /etc/apt/keyrings/docker.asc ]]; then
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
 fi
-cat >/etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+install_host_file etc/apt/sources.list.d/docker.sources
 apt-get update -q
 apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-install -d -m 0755 /etc/docker
-cat >/etc/docker/daemon.json <<'EOF'
-{
-  "log-driver": "local",
-  "log-opts": { "max-size": "20m", "max-file": "10" },
-  "live-restore": true,
-  "userland-proxy": false,
-  "no-new-privileges": true
-}
-EOF
+install_host_file etc/docker/daemon.json
 systemctl enable docker >/dev/null
 systemctl restart docker
 
 # Host logs rotate at about 30 days (AD-14).
-install -d -m 0755 /etc/systemd/journald.conf.d
-cat >/etc/systemd/journald.conf.d/50-piviki.conf <<'EOF'
-[Journal]
-MaxRetentionSec=30day
-EOF
+install_host_file etc/systemd/journald.conf.d/50-piviki.conf
 systemctl restart systemd-journald
 
 # ---------------------------------------------------------------------------------------------
 log "firewall: inbound SSH only"
-# A table of our own, never `flush ruleset`, so Docker's own rules are left alone. Published
-# container ports would bypass this chain through DNAT/forward, which is why Compose publishes none.
-cat >/etc/nftables.conf <<'EOF'
-#!/usr/sbin/nft -f
-# Managed by piviki-infra bootstrap. Inbound: SSH only, on the host itself (AD-17).
-table inet piviki_host
-delete table inet piviki_host
-
-table inet piviki_host {
-	chain input {
-		type filter hook input priority filter; policy drop;
-		iif "lo" accept
-		ct state established,related accept
-		ct state invalid drop
-		meta l4proto icmp icmp type { echo-request, destination-unreachable, time-exceeded } limit rate 10/second accept
-		meta l4proto ipv6-icmp accept
-		udp sport 67 udp dport 68 accept comment "DHCPv4 replies"
-		udp sport 547 udp dport 546 accept comment "DHCPv6 replies"
-		iifname "br-*" tcp dport 22 accept comment "Tunnel SSH from cloudflared (docker bridges), not rate-limited"
-		tcp dport 22 ct state new limit rate 30/minute accept comment "SSH by key"
-	}
-}
-EOF
-nft -c -f /etc/nftables.conf
+# Validated with `nft -c` before it replaces /etc/nftables.conf.
+install_host_file etc/nftables.conf
 systemctl enable nftables >/dev/null
 # Never `restart`: Ubuntu's nftables.service stops with `nft flush ruleset`, which would wipe
 # Docker's rules. Reload (or first start) only re-reads this file, which replaces our own table.
@@ -334,24 +330,20 @@ if systemctl is-active --quiet nftables; then systemctl reload nftables; else sy
 
 # ---------------------------------------------------------------------------------------------
 log "sshd"
-cat >/etc/ssh/sshd_config.d/10-piviki.conf <<EOF
-# Managed by piviki-infra bootstrap.
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PermitRootLogin no
-PubkeyAuthentication yes
-AllowUsers ${admin_user} ${DEPLOY_USER}
-X11Forwarding no
-AllowAgentForwarding no
-MaxAuthTries 3
-LoginGraceTime 30
-
-Match User ${DEPLOY_USER}
-	AllowTcpForwarding no
-	PermitTTY no
-	ForceCommand sudo -n ${DEPLOY_CMD} "\$SSH_ORIGINAL_COMMAND"
-EOF
-sshd -t
+# The drop-in is validated alone before it is installed; then the full config is tested, and on
+# failure the previous drop-in comes back before anything reloads sshd.
+sshd_dropin=/etc/ssh/sshd_config.d/10-piviki.conf
+sshd_backup=""
+if [[ -e "$sshd_dropin" ]]; then
+  sshd_backup="$(mktemp /etc/ssh/.10-piviki.conf.previous.XXXXXX)"
+  cp -p "$sshd_dropin" "$sshd_backup"
+fi
+install_host_file etc/ssh/sshd_config.d/10-piviki.conf
+if ! sshd -t; then
+  if [[ -n "$sshd_backup" ]]; then mv -f "$sshd_backup" "$sshd_dropin"; else rm -f "$sshd_dropin"; fi
+  die "sshd rejects its full config with the new drop-in; the previous drop-in is back, sshd not reloaded"
+fi
+[[ -z "$sshd_backup" ]] || rm -f "$sshd_backup"
 systemctl reload ssh 2>/dev/null || systemctl reload sshd
 
 # ---------------------------------------------------------------------------------------------
@@ -375,19 +367,8 @@ fi
 
 # The checkout's own files, never copies (AD-21): moving the checkout moves these with it.
 ln -sfn "$CORE_DIR/deploy/piviki-compose" /usr/local/sbin/piviki-compose
-# Only a rule, no Defaults: Ubuntu's sudo-rs rejects requiretty as unknown and does not list
-# env_reset, and both are already what we need: no tty is required, and the environment is
-# always reset, so the deploy script's PIVIKI_* test overrides never reach it for real.
-# Validated before it is put in place: a broken file in /etc/sudoers.d can break sudo.
-sudoers_tmp="$(mktemp /etc/sudoers.d/.piviki-deploy.XXXXXX)"
-cat >"$sudoers_tmp" <<EOF
-# The deploy user may run exactly one program as root, from the root-owned piviki-core
-# checkout (AD-21); it validates its own arguments.
-${DEPLOY_USER} ALL=(root) NOPASSWD: ${DEPLOY_CMD}
-EOF
-chmod 0440 "$sudoers_tmp"
-visudo -cf "$sudoers_tmp" >/dev/null || { rm -f "$sudoers_tmp"; die "sudoers rule failed validation"; }
-mv -f "$sudoers_tmp" /etc/sudoers.d/piviki-deploy
+# Validated with visudo before it goes live: a broken file in /etc/sudoers.d can break sudo.
+install_host_file etc/sudoers.d/piviki-deploy
 
 # ---------------------------------------------------------------------------------------------
 log "configuration and state directories"
@@ -395,6 +376,8 @@ install -d -m 0700 -o root -g root "$ETC_DIR"
 install -d -m 0755 -o root -g root "$STATE_DIR"
 printf '%s\n' "$environment" >"$ETC_DIR/environment"
 chmod 0600 "$ETC_DIR/environment"
+printf '%s\n' "$admin_user" >"$ETC_DIR/admin-user"
+chmod 0600 "$ETC_DIR/admin-user"
 
 # Exactly the env files in the checkout's deploy/env-manifest; each service reads only its own
 # (docs/secrets-inventory.md). A key the manifest gained is appended empty; values are never

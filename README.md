@@ -46,9 +46,12 @@ shares this repository's Cloudflare setup.
 ```
 piviki-infra/
 ├── bootstrap/
-│   └── bootstrap.sh          one host setup: Docker, firewall, sshd, deploy user, /etc/piviki,
-│                             the piviki-core checkout (re-runnable; --move-core moves the
-│                             checkout; --check re-runs the host checks)
+│   ├── bootstrap.sh          one host setup: Docker, firewall, sshd, deploy user, /etc/piviki,
+│   │                         the piviki-core checkout (re-runnable; --move-core moves the
+│   │                         checkout; --check re-runs the host checks)
+│   ├── files/etc/...         every config file it installs, at its path on the host
+│   ├── host-files.sh         the list of those files, their modes and validators (shared)
+│   └── validate-files.sh     validates files/ with the hosts' own programs (run by CI)
 ├── tofu/
 │   └── prod/                 Cloudflare for production (test gets its own folder later)
 │       ├── versions.tf       tool/provider pins, R2 state backend, state encryption
@@ -62,7 +65,9 @@ piviki-infra/
 │   ├── secrets-inventory.md  every secret by name: where it lives, who reads it
 │   ├── runbook-host-setup.md Bitwarden, create the instance, bootstrap, hardening checks
 │   └── runbook-first-deploy.md GitHub, Cloudflare, env files, first deploy, seeding, DNS, verification
-└── .github/dependabot.yml    weekly updates for the provider and Actions
+└── .github/
+    ├── dependabot.yml        weekly updates for the provider and Actions
+    └── workflows/host-files.yml  on every PR: validate bootstrap/files in Ubuntu 26.04, shellcheck
 ```
 
 On a host, next to this repository's checkout at `/opt/piviki/infra`:

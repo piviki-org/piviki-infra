@@ -1,0 +1,7 @@
+# Installed by piviki-infra bootstrap/bootstrap.sh; edit it in the repository, not on the host.
+# The deploy user may run exactly one program as root, from the root-owned piviki-core
+# checkout (AD-21); it validates its own arguments.
+# Only a rule, no Defaults: Ubuntu's sudo-rs rejects requiretty as unknown and does not list
+# env_reset, and both are already what we need: no tty is required, and the environment is
+# always reset, so the deploy script's PIVIKI_* test overrides never reach it for real.
+deploy ALL=(root) NOPASSWD: /opt/piviki/core/deploy/deploy.sh

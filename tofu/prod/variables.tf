@@ -25,43 +25,26 @@ variable "zone_name" {
   default     = "piviki.fi"
 }
 
-variable "access_team_name" {
-  description = "Zero Trust team name (the <team> in <team>.cloudflareaccess.com)."
-  type        = string
-}
-
-variable "librarian_emails" {
-  description = "Emails allowed through Access (one-time PIN) to the admin host."
-  type        = list(string)
-
-  validation {
-    condition     = length(var.librarian_emails) > 0
-    error_message = "At least one librarian email is required."
-  }
-}
-
-variable "otp_identity_provider_id" {
-  description = "Id of an existing One-time PIN login method, if the account already has one. Leave null to create it."
+variable "otp_identity_provider_import_id" {
+  description = "Id of the account's existing One-time PIN login method, to import it. Leave null to create one."
   type        = string
   default     = null
 }
 
-variable "public_records_enabled" {
-  description = "Create the admin and api DNS records. Keep false until the first librarian is seeded over SSH (AD-5)."
-  type        = bool
-  default     = false
-}
+variable "coming_soon_records" {
+  description = "The live coming-soon records to import, keyed by a stable name (apex-a-1, www, ...). Values must equal the live record's."
+  type = map(object({
+    id      = string
+    name    = string
+    type    = string
+    content = string
+    proxied = bool
+    ttl     = number
+    comment = optional(string)
+  }))
 
-variable "hosts" {
-  description = "Host names of this environment. Production's are the defaults."
-  type = object({
-    admin = string
-    api   = string
-    ssh   = string
-  })
-  default = {
-    admin = "admin.piviki.fi"
-    api   = "api.piviki.fi"
-    ssh   = "ssh-prod.piviki.fi"
+  validation {
+    condition     = length(var.coming_soon_records) > 0
+    error_message = "List the coming-soon records (apex and www) so the page stays under production's state."
   }
 }

@@ -2,7 +2,8 @@
 # on a host, before they can reach one: visudo (sudo-rs), nft, sshd, dockerd, apt-config. Runs in
 # the hosts' Ubuntu release with the hosts' packages, because a validator from another sudo or
 # release can accept what the host rejects (the sudoers lockout of 2026-11-05). Also shellchecks
-# the bootstrap scripts. Changes nothing anywhere.
+# the bootstrap scripts, and checks the OpenTofu configuration (fmt and validate, no backend, no
+# credentials). Changes nothing anywhere.
 name: host-files
 
 on:
@@ -58,3 +59,50 @@ jobs:
           dockerd --version
       - run: bootstrap/validate-files.sh
       - run: shellcheck -x bootstrap/*.sh
+
+  # tofu fmt and validate on each root (production's shared state and test), with the pinned
+  # OpenTofu the spine names. No backend, no state, no Cloudflare credentials: nothing is planned.
+  tofu:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      TOFU_VERSION: 1.13.2
+      # sha256 of tofu_<version>_amd64.deb; move both together.
+      TOFU_DEB_SHA256: 4ac1080e445fe4e6af87895be485390de256e3657add0fdaca18e2c286424396
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install OpenTofu ${{ env.TOFU_VERSION }}
+        run: |
+          deb="tofu_${TOFU_VERSION}_amd64.deb"
+          curl -fsSL -o "$deb" "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/${deb}"
+          echo "${TOFU_DEB_SHA256}  ${deb}" | sha256sum -c -
+          sudo dpkg -i "$deb"
+          tofu version | head -1 | grep -qx "OpenTofu v${TOFU_VERSION}"
+      - name: fmt
+        run: tofu fmt -check -recursive -diff tofu
+      - name: validate
+        run: |
+          for root in tofu/prod tofu/test; do
+            echo "== $root"
+            tofu -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            tofu -chdir="$root" validate
+          done
+      # Offline, mocked providers: test's resources are all test-named, on test hosts, and use the
+      # shared zone and login method only by the ids passed in (AD-17).
+      - name: test
+        run: |
+          tofu -chdir=tofu/test test
+          tofu -chdir=tofu/modules/core-ingress init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=tofu/modules/core-ingress test
+      # Test's state can own no shared resource: neither its root nor the module declares the zone,
+      # a login method or a rule, or imports anything. Destroying test removes nothing shared.
+      - name: test state owns nothing shared
+        run: |
+          if grep -rnE '^\s*(import\s*\{|resource\s+"cloudflare_(zone|zero_trust_access_identity_provider|ruleset)")' \
+              --include='*.tf' tofu/test tofu/modules/core-ingress; then
+            echo "FAIL  a shared resource or an import in test's configuration" >&2; exit 1
+          fi

@@ -7,9 +7,10 @@ deploy script and its checks) lives with the app in
 commit names its whole host runtime (AD-21). The patron site, later, is static on Cloudflare and
 shares this repository's Cloudflare setup.
 
-> **Status:** draft. Written for story 1.1 (the tracer bullet) and checked locally, but not yet run
-> on a real host. The bootstrap, the zone import and the deploy workflow are still to be run
-> end to end, following the runbooks in [`docs/`](docs/).
+> **Status:** story 1.1 (the tracer bullet) on the **test** environment: the AWS host is
+> bootstrapped as `test`; production's shared OpenTofu state, test's state and the first deploy
+> are still to be run end to end, following the runbooks in [`docs/`](docs/). Production (OVH)
+> starts later, in `epic-soft-open`.
 
 ## Principles
 
@@ -26,12 +27,19 @@ shares this repository's Cloudflare setup.
 - **Hosts never build.** CI builds the core image; a host only pulls a tagged image.
 - **Cloudflare as code, servers by hand.** OpenTofu manages Cloudflare (DNS, Tunnel, Access).
   The EC2 instance or VPS is created by hand from a checklist.
+- **One state per environment; shared resources only in production's (AD-17).** `tofu/prod`
+  holds the `piviki.fi` zone, the coming-soon records and the One-time PIN login method; each
+  environment's Tunnel, Access and records come from the `core-ingress` module in its own root
+  (`tofu/test` now; `tofu/prod` at the production start). Test takes the shared ids as plain
+  values, so destroying test removes nothing production uses.
+- **One environment name per host.** `/etc/piviki/environment` (`test` or `production`); core
+  refuses to start, and the deploy checks fail, when a host name disagrees with it.
 
 ## Stack
 
 | Part | Version | Role |
 |---|---|---|
-| Ubuntu Server LTS, x86_64 | same release on every host | Host OS: AWS EC2 before the move, then OVHcloud VPS-1 |
+| Ubuntu Server LTS, x86_64 | same release on every host | Host OS: AWS EC2 for test, OVHcloud VPS-1 for production |
 | nftables | Ubuntu package | Host firewall: inbound SSH only |
 | Docker Engine + Compose plugin | Docker's apt repository | Runs the stack |
 | `cloudflared` | 2026.10.7, pinned by digest in `piviki-core/deploy` | Tunnel connector: the only way in for web traffic |
@@ -53,21 +61,29 @@ piviki-infra/
 │   ├── host-files.sh         the list of those files, their modes and validators (shared)
 │   └── validate-files.sh     validates files/ with the hosts' own programs (run by CI)
 ├── tofu/
-│   └── prod/                 Cloudflare for production (test gets its own folder later)
-│       ├── versions.tf       tool/provider pins, R2 state backend, state encryption
-│       ├── zone.tf           imports the existing piviki.fi zone (never creates or deletes it)
+│   ├── prod/                 production's state: shared resources only (for now)
+│   │   ├── versions.tf       tool/provider pins, R2 state backend, state encryption
+│   │   ├── zone.tf           imports the existing piviki.fi zone (never creates or deletes it)
+│   │   ├── dns.tf            imports the coming-soon records (no change)
+│   │   ├── access.tf         the One-time PIN login method (created or imported)
+│   │   ├── variables.tf, outputs.tf   outputs: zone_id, otp_identity_provider_id for test
+│   │   └── *.example         copy to backend.hcl / terraform.tfvars (git-ignored)
+│   ├── test/                 test's state: only test-named resources, own key and passphrase
+│   │   ├── main.tf           calls modules/core-ingress with the test hosts
+│   │   ├── versions.tf, variables.tf, outputs.tf
+│   │   └── *.example
+│   └── modules/core-ingress/ one environment's route in to core's host
 │       ├── tunnel.tf         the Tunnel and its routes
-│       ├── access.tf         Access apps, policies and service tokens
-│       ├── dns.tf            ssh, admin and api records
-│       ├── variables.tf, outputs.tf
-│       └── *.example         copy to backend.hcl / terraform.tfvars (git-ignored)
+│       ├── access.tf         Access apps, policies and the deploy service token
+│       └── dns.tf            ssh, admin and api records
 ├── docs/
 │   ├── secrets-inventory.md  every secret by name: where it lives, who reads it
 │   ├── runbook-host-setup.md Bitwarden, create the instance, bootstrap, hardening checks
 │   └── runbook-first-deploy.md GitHub, Cloudflare, env files, first deploy, seeding, DNS, verification
 └── .github/
-    ├── dependabot.yml        weekly updates for the provider and Actions
-    └── workflows/host-files.yml  on every PR: validate bootstrap/files in Ubuntu 26.04, shellcheck
+    ├── dependabot.yml        weekly updates for the providers and Actions
+    └── workflows/host-files.yml  on every PR: validate bootstrap/files in Ubuntu 26.04, shellcheck,
+                              tofu fmt and validate on tofu/prod and tofu/test
 ```
 
 On a host, next to this repository's checkout at `/opt/piviki/infra`:
@@ -96,7 +112,7 @@ flowchart LR
 
   subgraph cf["Cloudflare"]
     access{"Access<br/>one-time PIN or<br/>service token"}
-    edge["Edge + DNS<br/>admin / api / ssh-prod"]
+    edge["Edge + DNS<br/>test-admin / test-api / ssh-test"]
   end
 
   subgraph host["Host: Ubuntu, inbound SSH only"]
@@ -107,10 +123,10 @@ flowchart LR
     sshd["sshd<br/>deploy user"]
   end
 
-  librarian -->|"admin.piviki.fi"| access
-  ci -->|"ssh-prod.piviki.fi"| access
+  librarian -->|"test-admin.piviki.fi"| access
+  ci -->|"ssh-test.piviki.fi"| access
   access --> edge
-  public -->|"api.piviki.fi /api/v1"| edge
+  public -->|"test-api.piviki.fi /api/v1"| edge
   edge ==>|"Tunnel, dialled out by the host"| cfd
   cfd -->|"admin, api"| caddy
   cfd -->|"ssh"| sshd
@@ -122,10 +138,10 @@ What each layer refuses:
 
 | Layer | Refuses |
 |---|---|
-| Cloudflare Access | Anyone on `admin` without a one-time PIN for a listed email (no token passes it); anyone on `ssh-prod` without the deploy token |
-| `cloudflared` | Requests to `admin` and `ssh-prod` without a valid Access token; any other host name (404) |
+| Cloudflare Access | Anyone on `admin` without a one-time PIN for a listed email (no token passes it); anyone on `ssh-<env>` without the deploy token |
+| `cloudflared` | Requests to `admin` and `ssh-<env>` without a valid Access token; any other host name (404) |
 | Caddy | Unknown hosts, backslashes in paths, first-register, GraphQL, a foreign `Origin` on admin (403), anything on `api` outside `/api/v1/*` (all 404 unless noted) |
-| core | Every operation not explicitly allowed (deny-by-default collections), first-register (again), GraphQL, running jobs over HTTP |
+| core | Every operation not explicitly allowed (deny-by-default collections), first-register (again), GraphQL, running jobs over HTTP; starting at all with a host name that disagrees with the host's environment name |
 | Host firewall | Every inbound connection except SSH |
 
 ### Containers and networks
@@ -182,8 +198,8 @@ sequenceDiagram
   end
   F->>D: run workflow (environment, TAG)
   D->>D: COMMIT is on main; check out its deploy/checks.sh
-  D->>A: ssh deploy@ssh-prod (service token)
-  A->>H: deploy production TAG
+  D->>A: ssh deploy@ssh-test (service token)
+  A->>H: deploy test TAG
   H->>H: refuse unless checkout clean and deploy/ = COMMIT's
   H->>R: pull the tag
   H->>H: start postgres, run migrations
@@ -205,12 +221,12 @@ flowchart LR
   z["Bitwarden<br/>runbook-host-setup §0"] --> a
   a["Create instance<br/>runbook-host-setup §1-3"] --> y["Push repos, first image<br/>runbook-first-deploy §1"]
   y --> b["bootstrap.sh --core-commit<br/>runbook-host-setup §4"]
-  b --> c["Cloudflare tokens<br/>+ tofu: zone import,<br/>Tunnel, Access, ssh record"]
+  b --> c["Cloudflare tokens<br/>+ tofu/prod: shared, no change<br/>+ tofu/test: Tunnel, Access, ssh record"]
   c --> d["Fill /etc/piviki/*.env"]
   d --> e["GitHub Environment<br/>vars + secrets"]
   e --> f["First deploy<br/>(no public records yet)"]
   f --> g["Seed first librarian<br/>over SSH"]
-  g --> h["tofu: admin + api records"]
+  g --> h["tofu/test: admin + api records"]
   h --> i["Deploy again with public checks,<br/>then verification"]
 ```
 

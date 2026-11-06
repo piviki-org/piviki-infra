@@ -1,11 +1,23 @@
-# Copy to terraform.tfvars (git-ignored). Not secret, but environment-specific.
-account_id       = "<CLOUDFLARE_ACCOUNT_ID>"
-zone_id          = "<PIVIKI_FI_ZONE_ID>"
-access_team_name = "<zero-trust-team-name>"
-librarian_emails = ["founder-one@example.org", "founder-two@example.org"]
+# Copy to terraform.tfvars (git-ignored). Not secret. Production's shared resources only.
+account_id = "<CLOUDFLARE_ACCOUNT_ID>"
+zone_id    = "<PIVIKI_FI_ZONE_ID>"
 
-# Set to the existing One-time PIN login method id if the account already has one.
-# otp_identity_provider_id = "<id>"
+# Set to the existing One-time PIN login method's id if the account already has one (it is then
+# imported); leave unset to create it.
+# otp_identity_provider_import_id = "<id>"
 
-# Flip to true only after the first librarian is seeded over SSH.
-public_records_enabled = false
+# The live coming-soon records, copied exactly from Cloudflare (docs/runbook-first-deploy.md §2.2):
+# record id, name, type, content, proxied, ttl (1 = automatic), and comment if the record has one.
+# List EVERY live apex and www record: a GitHub Pages apex usually has four A and four AAAA
+# records. A record left out stays unmanaged. The plan must show only imports for these, no change.
+coming_soon_records = {
+  apex-a-1    = { id = "<record id>", name = "piviki.fi", type = "A", content = "<ip>", proxied = false, ttl = 1 }
+  apex-a-2    = { id = "<record id>", name = "piviki.fi", type = "A", content = "<ip>", proxied = false, ttl = 1 }
+  apex-a-3    = { id = "<record id>", name = "piviki.fi", type = "A", content = "<ip>", proxied = false, ttl = 1 }
+  apex-a-4    = { id = "<record id>", name = "piviki.fi", type = "A", content = "<ip>", proxied = false, ttl = 1 }
+  apex-aaaa-1 = { id = "<record id>", name = "piviki.fi", type = "AAAA", content = "<ipv6>", proxied = false, ttl = 1 }
+  apex-aaaa-2 = { id = "<record id>", name = "piviki.fi", type = "AAAA", content = "<ipv6>", proxied = false, ttl = 1 }
+  apex-aaaa-3 = { id = "<record id>", name = "piviki.fi", type = "AAAA", content = "<ipv6>", proxied = false, ttl = 1 }
+  apex-aaaa-4 = { id = "<record id>", name = "piviki.fi", type = "AAAA", content = "<ipv6>", proxied = false, ttl = 1 }
+  www         = { id = "<record id>", name = "www.piviki.fi", type = "CNAME", content = "<target>", proxied = false, ttl = 1 }
+}

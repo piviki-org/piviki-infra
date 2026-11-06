@@ -1,7 +1,10 @@
-# Runbook: host setup (EC2, pre-launch production)
+# Runbook: host setup (EC2, the test environment)
 
 Performed by a founder, with the agent guiding. Every AWS rule here is AD-17's. Record the date,
 who ran each step and any deviation in the story's Implementation Notes.
+
+This host is the **test** environment (AD-17: test on AWS EC2; production starts later on OVH with
+the same bootstrap, in `epic-soft-open`). Already run for test on 2026-11-05; kept for a rebuild.
 
 Order across the two runbooks: this one §0 to §3, then `runbook-first-deploy.md` §1 (the
 repositories and the first image), then §4 here (the bootstrap needs a `piviki-core` commit on
@@ -25,8 +28,10 @@ The deploy key in §4 is the first secret, so this comes first (AD-17).
 
 ## 1. AWS account (once)
 
-- [ ] The account is on a **paid plan** (Billing > Account plan), not the free plan, before any
-      data exists, so credits cannot close its resources.
+- [ ] Account plan (Billing > Account plan): the free plan is acceptable for test (AD-17: it
+      holds only test data the bootstrap and the import script can recreate). Record the plan's
+      end date and kind of credits in the story notes; upgrade the account or move test before
+      either runs out.
 - [ ] Each founder signs in with their own IAM Identity Center or root-with-MFA login. No IAM
       user with access keys is created; nothing in Piviki uses AWS APIs.
 - [ ] Region: an EU region (Stockholm `eu-north-1` is closest to Finland). All steps below are in
@@ -49,7 +54,7 @@ The deploy key in §4 is the first secret, so this comes first (AD-17).
 
 | Setting | Value |
 |---|---|
-| Name | `piviki-prod` |
+| Name | `piviki-test` (a Name tag only; renaming it later is harmless) |
 | AMI | Ubuntu Server **LTS**, x86_64, from Canonical (owner `099720109477`). Use the latest LTS that OVH VPS-1 also offers; record the release (e.g. 24.04 or 26.04) here: `______` |
 | Architecture | **x86_64** |
 | Instance type | An x86_64 size no larger than OVH VPS-1 (confirm VPS-1's current specs first), e.g. `t3.small` or `t3.medium` |
@@ -82,23 +87,23 @@ pushed the first image. Its tag is `<commit>-<date>`; the bootstrap places the h
 `piviki-core` checkout at that `<commit>` (AD-21).
 
 On a founder's machine, create the deploy key. Store the private key in Bitwarden
-(`production` collection, item `DEPLOY_SSH_KEY`, as in `secrets-inventory.md`); besides that it lives only in the
+(`test` collection, item `DEPLOY_SSH_KEY`, as in `secrets-inventory.md`); besides that it lives only in the
 GitHub Environment:
 
 ```sh
-ssh-keygen -t ed25519 -N '' -C piviki-prod-deploy -f ./piviki-prod-deploy
+ssh-keygen -t ed25519 -N '' -C piviki-test-deploy -f ./piviki-test-deploy
 ```
 
-Copy `piviki-prod-deploy.pub` to the host, then on the host:
+Copy `piviki-test-deploy.pub` to the host, then on the host:
 
 ```sh
 ssh ubuntu@<public-ip>
 sudo apt-get update && sudo apt-get install -y git
 sudo git clone https://github.com/piviki-org/piviki-infra /opt/piviki/infra
-sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment production \
+sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment test \
      --core-commit <commit from the first tag> \
-     --deploy-key ~/piviki-prod-deploy.pub --admin-user ubuntu
-rm ~/piviki-prod-deploy.pub
+     --deploy-key ~/piviki-test-deploy.pub --admin-user ubuntu
+rm ~/piviki-test-deploy.pub
 ```
 
 Besides the host setup, this clones `piviki-core` root-owned to `/opt/piviki/core` at that
@@ -122,7 +127,7 @@ Updating piviki-infra on a host later:
 
 ```sh
 sudo git -C /opt/piviki/infra pull --ff-only
-sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment production
+sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment test
 ```
 
 Moving the `piviki-core` checkout (only a founder, only to a commit on `main`; AD-21). Needed
@@ -133,7 +138,7 @@ stack alone:
 ```sh
 sudo /opt/piviki/infra/bootstrap/bootstrap.sh --move-core <commit>
 # if deploy/env-manifest gained a file or key, also re-run the full bootstrap and fill it:
-sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment production
+sudo /opt/piviki/infra/bootstrap/bootstrap.sh --environment test
 ```
 
 ## 5. Hardening checks (record each result)

@@ -1,7 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: terraform
-    directory: /tofu/prod
+    directories:
+      - /tofu/prod
+      - /tofu/test
+      - /tofu/modules/core-ingress
     schedule:
       interval: weekly
   - package-ecosystem: github-actions

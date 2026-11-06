@@ -1,20 +1,11 @@
-output "tunnel_id" {
-  description = "GitHub Environment variable CF_TUNNEL_ID."
-  value       = cloudflare_zero_trust_tunnel_cloudflared.env.id
+# Inputs for tofu/test (and any other environment's state): plain ids, so no other state ever
+# reads this one or needs its passphrase.
+output "zone_id" {
+  description = "tofu/test variable zone_id."
+  value       = cloudflare_zone.piviki.id
 }
 
-output "tunnel_token" {
-  description = "TUNNEL_TOKEN in /etc/piviki/cloudflared.env on the host."
-  value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.env.token
-  sensitive   = true
+output "otp_identity_provider_id" {
+  description = "tofu/test variable otp_identity_provider_id."
+  value       = cloudflare_zero_trust_access_identity_provider.otp.id
 }
-
-output "deploy_service_token" {
-  description = "GitHub Environment secrets CF_ACCESS_DEPLOY_CLIENT_ID / _SECRET."
-  value = {
-    client_id     = cloudflare_zero_trust_access_service_token.deploy.client_id
-    client_secret = cloudflare_zero_trust_access_service_token.deploy.client_secret
-  }
-  sensitive = true
-}
-

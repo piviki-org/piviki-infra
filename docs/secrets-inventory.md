@@ -62,10 +62,28 @@ Variables (not secret) of the GitHub Environment `test`: `ADMIN_HOST=test-admin.
 |---|---|---|---|
 | `cloudflare-tofu-api-token-prod` | `production` | `CLOUDFLARE_API_TOKEN` | Scopes in `runbook-first-deploy.md` §2.1. For `tofu/prod` only; never on a host or in GitHub. |
 | `cloudflare-tofu-api-token-test` | `test` | `CLOUDFLARE_API_TOKEN` | Scopes in `runbook-first-deploy.md` §2.1. For `tofu/test` only; can still change production's routing (accepted risk, AD-17). |
-| `r2-tofu-state-token-prod` | `production` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to `piviki-prod-tofu-state-eu` only. For `tofu/prod`; never on a host or in GitHub. |
-| `r2-tofu-state-token-test` | `test` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to `piviki-test-tofu-state-eu` only. For `tofu/test`; cannot reach production's bucket. |
+| `r2-tofu-state-token-prod` | `production` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to `piviki-prod-tofu-state-eu` only. Bitwarden holds its Access Key ID and Secret Access Key only, not the token value. For `tofu/prod`; never on a host or in GitHub. |
+| `r2-tofu-state-token-test` | `test` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to `piviki-test-tofu-state-eu` only. Bitwarden holds its Access Key ID and Secret Access Key only, not the token value. For `tofu/test`; cannot reach production's bucket. |
 | `tofu-state-passphrase-prod` | `production` | `TF_VAR_state_passphrase` | Encrypts production's (shared) state and plans; losing it loses the state. |
 | `tofu-state-passphrase-test` | `test` | `TF_VAR_state_passphrase` | Test's own; encrypts only `tofu/test`'s state. Never production's. |
+
+## Bitwarden item types
+
+Every secret is its own item, named exactly as in this inventory, in its collection (`production`
+or `test`), with master password re-prompt on. Use a **Login** item so the value is masked, has a
+copy button and is readable by the CLI (`bw get username|password <name>`); a Secure Note shows its
+text in plain view.
+
+| Item | Type | Username | Password | Notes field |
+|---|---|---|---|---|
+| `r2-tofu-state-token-<env>` | Login | Access Key ID | Secret Access Key | its bucket, Object Read & Write, date created |
+| `cloudflare-tofu-api-token-<env>` | Login | (empty) | token | its permissions, TTL or IP filter if set, date created |
+| `piviki-<env>-tunnel-read-token` | Login | (empty) | token | Tunnel: Read only; copied to GitHub `CF_TUNNEL_READ_TOKEN` |
+| `tofu-state-passphrase-<env>` | Login | (empty) | passphrase | losing it loses that state |
+| Host secrets (`/etc/piviki/*.env` values) | Login | (empty) | value | the file and key it goes in |
+| `DEPLOY_SSH_KEY` | SSH key | — | — | public half on the host; private half copied to GitHub |
+
+A third secret value on one item goes in a **Hidden** custom field.
 
 ## Provider consoles
 

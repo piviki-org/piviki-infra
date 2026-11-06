@@ -74,7 +74,10 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
         (piviki.fi only): Zone: Read; DNS: Edit.
       Accepted risk (AD-17): Cloudflare cannot limit Tunnel or Access permissions to test's
       resources, and DNS edit covers the whole zone, so test's token can still change
-      production's routing. Keep it in Bitwarden `test` only and rotate it if it leaks.
+      production's routing. Keep it in Bitwarden `test` only and rotate it if it leaks. The
+      environments have separate tokens because that is best practice, even though it holds
+      little value here: there is only one Cloudflare account, so both tokens reach the same
+      account and the same `piviki.fi` zone.
 - [ ] **Tunnel read token for test** `piviki-test-tunnel-read-token`: custom token with only
       Account: Cloudflare Tunnel: Read, for the deploy check's connector count. Bitwarden `test`;
       production gets its own at the production start.

@@ -12,11 +12,12 @@ terraform {
     }
   }
 
-  # State lives in the private R2 bucket created in the EU jurisdiction, one key per environment.
+  # Production's state lives in production's own private R2 bucket (EU jurisdiction); test has its
+  # own bucket, so test's credentials cannot reach this state.
   # Bucket, key and endpoint come from backend.hcl (see backend.hcl.example):
   #   tofu init -backend-config=backend.hcl
-  # R2 credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (an R2 API token scoped to
-  # that bucket); this is R2's S3 API, not AWS.
+  # R2 credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (r2-tofu-state-token-prod,
+  # scoped to that bucket only); this is R2's S3 API, not AWS.
   backend "s3" {
     region                      = "auto"
     use_path_style              = true

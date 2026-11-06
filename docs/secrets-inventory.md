@@ -61,7 +61,8 @@ Variables (not secret) of the GitHub Environment `test`: `ADMIN_HOST=test-admin.
 | Name | Collection | Held as | Notes |
 |---|---|---|---|
 | `cloudflare-tofu-api-token` | `production` | `CLOUDFLARE_API_TOKEN` | Scopes in `runbook-first-deploy.md` §2.1. Used for both states; never on a host or in GitHub. |
-| `r2-tofu-state-token` | `production` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to the private EU bucket only. Used for both states; never on a host or in GitHub. |
+| `r2-tofu-state-token-prod` | `production` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to `piviki-prod-private-eu` only. For `tofu/prod`; never on a host or in GitHub. |
+| `r2-tofu-state-token-test` | `test` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 API token, Object Read & Write, scoped to `piviki-test-private-eu` only. For `tofu/test`; cannot reach production's bucket. |
 | `tofu-state-passphrase-prod` | `production` | `TF_VAR_state_passphrase` | Encrypts production's (shared) state and plans; losing it loses the state. |
 | `tofu-state-passphrase-test` | `test` | `TF_VAR_state_passphrase` | Test's own; encrypts only `tofu/test`'s state. Never production's. |
 

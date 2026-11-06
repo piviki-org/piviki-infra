@@ -12,7 +12,7 @@ production's state or its passphrase. Production's own Tunnel, Access and host c
 production start (`epic-soft-open`).
 
 Bitwarden: values for test go in the `test` collection; shared founder credentials that can
-change production's resources (the OpenTofu API token, the state bucket's R2 token, production's
+change production's resources (the OpenTofu API token, production's R2 state token, production's
 state passphrase) stay in `production`. Nothing from `production` is copied to the test host or
 test's GitHub Environment.
 
@@ -49,12 +49,16 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
 
 ### 2.1 Tokens and bucket (Cloudflare dashboard)
 
-- [ ] **R2 bucket for state and production's backups**: R2 > Create bucket, name `piviki-private-eu`,
-      **Location: Specify jurisdiction > European Union**, public access **off**. Each
-      environment's state is its own key there, encrypted with its own passphrase.
-- [ ] **R2 API token** `r2-tofu-state-token`: R2 > Manage API tokens > Create, Object Read &
-      Write, **only** bucket `piviki-private-eu` (EU jurisdiction). Bitwarden `production`
-      (founder use only; never on a host or in GitHub).
+- [ ] **Two private R2 buckets, one per environment** (AD-17): R2 > Create bucket, each with
+      **Location: Specify jurisdiction > European Union** (cannot be changed later) and public
+      access **off**:
+      - `piviki-prod-private-eu`: production's state (and, later, production's backups)
+      - `piviki-test-private-eu`: test's state (and, later, test's erasure records)
+- [ ] **One R2 API token per bucket**: R2 > Manage API tokens > Create, Object Read & Write,
+      **only** that one bucket (EU jurisdiction). Founder use only; never on a host or in GitHub.
+      - `r2-tofu-state-token-prod`: only `piviki-prod-private-eu`. Bitwarden `production`.
+      - `r2-tofu-state-token-test`: only `piviki-test-private-eu`. Bitwarden `test`.
+      Test's token cannot reach production's bucket.
 - [ ] **OpenTofu API token** `cloudflare-tofu-api-token`: My Profile > API Tokens > Create custom
       token with:
       - Account: Cloudflare Tunnel: Edit; Access: Apps and Policies: Edit; Access: Service Tokens:
@@ -91,7 +95,7 @@ cp backend.hcl.example backend.hcl          # fill in the account id
 cp terraform.tfvars.example terraform.tfvars # account id, zone id, coming_soon_records, and
                                             # otp_identity_provider_import_id if one exists
 export CLOUDFLARE_API_TOKEN=...             # cloudflare-tofu-api-token
-export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # r2-tofu-state-token
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # r2-tofu-state-token-prod
 export TF_VAR_state_passphrase=...          # tofu-state-passphrase-prod (new, 32+ chars, Bitwarden production)
 tofu init -backend-config=backend.hcl
 
@@ -113,11 +117,11 @@ recorded above.
 
 ```sh
 cd piviki-infra/tofu/test
-cp backend.hcl.example backend.hcl          # account id; key tofu/test/terraform.tfstate
+cp backend.hcl.example backend.hcl          # account id; bucket piviki-test-private-eu
 cp terraform.tfvars.example terraform.tfvars # account id, team name, librarian emails, and the
                                             # zone_id / otp_identity_provider_id from §2.2's output
 export CLOUDFLARE_API_TOKEN=...             # cloudflare-tofu-api-token
-export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # r2-tofu-state-token
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # r2-tofu-state-token-test (never prod's)
 export TF_VAR_state_passphrase=...          # tofu-state-passphrase-test (new, 32+ chars, Bitwarden test;
                                             # never production's)
 tofu init -backend-config=backend.hcl

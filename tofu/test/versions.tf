@@ -12,12 +12,12 @@ terraform {
     }
   }
 
-  # Test's own state: its own key in the private R2 bucket (EU jurisdiction) and its own
+  # Test's own state: test's own private R2 bucket (EU jurisdiction) and its own
   # passphrase, never production's (AD-17). Bucket, key and endpoint come from backend.hcl
   # (see backend.hcl.example):
   #   tofu init -backend-config=backend.hcl
-  # R2 credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (an R2 API token scoped to
-  # that bucket); this is R2's S3 API, not AWS.
+  # R2 credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (r2-tofu-state-token-test,
+  # scoped to test's bucket only; it cannot reach production's); this is R2's S3 API, not AWS.
   backend "s3" {
     region                      = "auto"
     use_path_style              = true

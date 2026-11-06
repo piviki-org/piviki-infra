@@ -12,8 +12,8 @@ terraform {
     }
   }
 
-  # Production's state lives in production's own private R2 bucket (EU jurisdiction); test has its
-  # own bucket, so test's credentials cannot reach this state.
+  # Production's state lives in its own R2 bucket (EU jurisdiction) that holds nothing else; test
+  # has its own bucket, so test's credentials cannot reach this state.
   # Bucket, key and endpoint come from backend.hcl (see backend.hcl.example):
   #   tofu init -backend-config=backend.hcl
   # R2 credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (r2-tofu-state-token-prod,

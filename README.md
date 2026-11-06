@@ -241,9 +241,10 @@ EU organisation, AD-17) and copied to the one place that uses it: a host env fil
 key is the one secret kept offline instead. [`docs/secrets-inventory.md`](docs/secrets-inventory.md)
 lists them all by name.
 
-OpenTofu state is stored per environment in its own private R2 bucket in Cloudflare's EU
-jurisdiction (`piviki-prod-private-eu`, `piviki-test-private-eu`), each reached with its own R2
-token and encrypted with its own passphrase before upload.
+OpenTofu state is stored per environment in a private R2 bucket of its own in Cloudflare's EU
+jurisdiction (`piviki-prod-tofu-state-eu`, `piviki-test-tofu-state-eu`) that holds nothing else,
+each reached with its own founder-held R2 token and encrypted with its own passphrase before
+upload. Each environment also has its own OpenTofu Cloudflare API token.
 
 ## Local stack
 

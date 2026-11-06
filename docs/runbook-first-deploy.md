@@ -12,8 +12,8 @@ production's state or its passphrase. Production's own Tunnel, Access and host c
 production start (`epic-soft-open`).
 
 Bitwarden: values for test go in the `test` collection; shared founder credentials that can
-change production's resources (the OpenTofu API token, production's R2 state token, production's
-state passphrase) stay in `production`. Nothing from `production` is copied to the test host or
+change production's resources (production's OpenTofu API token, R2 state token and state
+passphrase) stay in `production`. Nothing from `production` is copied to the test host or
 test's GitHub Environment.
 
 Order: `runbook-host-setup.md` §0 to §3, then §1 here, then `runbook-host-setup.md` §4 (the
@@ -49,24 +49,32 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
 
 ### 2.1 Tokens and bucket (Cloudflare dashboard)
 
-- [ ] **Two private R2 buckets, one per environment** (AD-17): R2 > Create bucket, each with
-      **Location: Specify jurisdiction > European Union** (cannot be changed later) and public
-      access **off**:
-      - `piviki-prod-private-eu`: production's state (and, later, production's backups)
-      - `piviki-test-private-eu`: test's state (and, later, test's erasure records)
-- [ ] **One R2 API token per bucket**: R2 > Manage API tokens > Create, Object Read & Write,
-      **only** that one bucket (EU jurisdiction). Founder use only; never on a host or in GitHub.
-      - `r2-tofu-state-token-prod`: only `piviki-prod-private-eu`. Bitwarden `production`.
-      - `r2-tofu-state-token-test`: only `piviki-test-private-eu`. Bitwarden `test`.
-      Test's token cannot reach production's bucket.
-- [ ] **OpenTofu API token** `cloudflare-tofu-api-token`: My Profile > API Tokens > Create custom
-      token with:
-      - Account: Cloudflare Tunnel: Edit; Access: Apps and Policies: Edit; Access: Service Tokens:
-        Edit; Access: Organizations, Identity Providers, and Groups: Edit; Account Settings: Read
-      - Zone (piviki.fi only): Zone: Read; DNS: Edit
-      - Client IP filtering: optional; TTL: optional
-
-      Bitwarden `production` (founder use only).
+- [ ] **Two OpenTofu state buckets, one per environment** (AD-17): R2 > Create bucket, each with
+      **Location: Specify jurisdiction > European Union** (cannot be changed later), public
+      access **off**, and **no lifecycle or lock rule**. Each holds only that environment's state:
+      - `piviki-prod-tofu-state-eu`
+      - `piviki-test-tofu-state-eu`
+      Backups and erasure records go to separate data buckets (`piviki-<env>-private-eu`),
+      created by the stories that first write to them, never these.
+- [ ] **One R2 API token per state bucket**: R2 > Manage API tokens > Create, Object Read &
+      Write, **only** that one bucket (EU jurisdiction). Founder use only; never on a host or in
+      GitHub. Test's token cannot reach production's bucket.
+      - `r2-tofu-state-token-prod`: only `piviki-prod-tofu-state-eu`. Bitwarden `production`.
+      - `r2-tofu-state-token-test`: only `piviki-test-tofu-state-eu`. Bitwarden `test`.
+- [ ] **One OpenTofu API token per environment** (My Profile > API Tokens > Create custom token;
+      client IP filtering and TTL optional). Founder use only; production's is never used for
+      test work. Neither gets any R2, API Tokens or Account Settings edit permission.
+      - `cloudflare-tofu-api-token-prod`, Bitwarden `production`, for `tofu/prod`'s shared
+        resources: Account: Access: Organizations, Identity Providers, and Groups: Edit; Account
+        Settings: Read. Zone (piviki.fi only): Zone: Read; DNS: Edit. (The production start adds
+        Tunnel and Access app permissions when it adds production's `core_ingress`.)
+      - `cloudflare-tofu-api-token-test`, Bitwarden `test`, for `tofu/test`: Account: Cloudflare
+        Tunnel: Edit; Access: Apps and Policies: Edit; Access: Service Tokens: Edit; Access:
+        Organizations, Identity Providers, and Groups: Read; Account Settings: Read. Zone
+        (piviki.fi only): Zone: Read; DNS: Edit.
+      Accepted risk (AD-17): Cloudflare cannot limit Tunnel or Access permissions to test's
+      resources, and DNS edit covers the whole zone, so test's token can still change
+      production's routing. Keep it in Bitwarden `test` only and rotate it if it leaks.
 - [ ] **Tunnel read token for test** `piviki-test-tunnel-read-token`: custom token with only
       Account: Cloudflare Tunnel: Read, for the deploy check's connector count. Bitwarden `test`;
       production gets its own at the production start.
@@ -94,7 +102,7 @@ cd piviki-infra/tofu/prod
 cp backend.hcl.example backend.hcl          # fill in the account id
 cp terraform.tfvars.example terraform.tfvars # account id, zone id, coming_soon_records, and
                                             # otp_identity_provider_import_id if one exists
-export CLOUDFLARE_API_TOKEN=...             # cloudflare-tofu-api-token
+export CLOUDFLARE_API_TOKEN=...             # cloudflare-tofu-api-token-prod
 export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # r2-tofu-state-token-prod
 export TF_VAR_state_passphrase=...          # tofu-state-passphrase-prod (new, 32+ chars, Bitwarden production)
 tofu init -backend-config=backend.hcl
@@ -117,10 +125,10 @@ recorded above.
 
 ```sh
 cd piviki-infra/tofu/test
-cp backend.hcl.example backend.hcl          # account id; bucket piviki-test-private-eu
+cp backend.hcl.example backend.hcl          # account id; bucket piviki-test-tofu-state-eu
 cp terraform.tfvars.example terraform.tfvars # account id, team name, librarian emails, and the
                                             # zone_id / otp_identity_provider_id from §2.2's output
-export CLOUDFLARE_API_TOKEN=...             # cloudflare-tofu-api-token
+export CLOUDFLARE_API_TOKEN=...             # cloudflare-tofu-api-token-test (never prod's)
 export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # r2-tofu-state-token-test (never prod's)
 export TF_VAR_state_passphrase=...          # tofu-state-passphrase-test (new, 32+ chars, Bitwarden test;
                                             # never production's)

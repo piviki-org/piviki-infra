@@ -12,7 +12,7 @@ terraform {
     }
   }
 
-  # Test's own state: test's own private R2 bucket (EU jurisdiction) and its own
+  # Test's own state: test's own state-only R2 bucket (EU jurisdiction) and its own
   # passphrase, never production's (AD-17). Bucket, key and endpoint come from backend.hcl
   # (see backend.hcl.example):
   #   tofu init -backend-config=backend.hcl

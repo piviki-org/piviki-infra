@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (git-ignored). Not secret. Test's values only; no production value.
+account_id       = "<CLOUDFLARE_ACCOUNT_ID>"
+access_team_name = "<zero-trust-team-name>"
+librarian_emails = ["founder-one@example.org", "founder-two@example.org"]
+
+# From production's shared state: tofu -chdir=tofu/prod output
+zone_id                  = "<zone_id output>"
+otp_identity_provider_id = "<otp_identity_provider_id output>"
+
+# Flip to true only after the first librarian is seeded over SSH on the test host (AD-5).
+public_records_enabled = false

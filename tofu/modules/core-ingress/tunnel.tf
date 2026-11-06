@@ -6,7 +6,7 @@ resource "random_bytes" "tunnel_secret" {
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "env" {
   account_id    = var.account_id
-  name          = "piviki-prod"
+  name          = var.name
   config_src    = "cloudflare"
   tunnel_secret = random_bytes.tunnel_secret.base64
 }

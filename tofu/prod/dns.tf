@@ -1,40 +1,28 @@
-# Only the records declared here are managed. The apex and www records of the coming-soon page
-# are not, and no change here touches them.
+# The coming-soon page's records (apex and www, GitHub Pages). Shared: piviki.fi must keep serving
+# the coming-soon page until the soft open (AD-17), so they live only in production's state. They
+# are imported, never created, and the plan after import must report no changes: each entry in
+# coming_soon_records must hold the live record's exact values (docs/runbook-first-deploy.md).
+# The soft open replaces them in one apply (epic-soft-open). Records not listed here are not
+# managed by this state.
 
-locals {
-  tunnel_target = "${cloudflare_zero_trust_tunnel_cloudflared.env.id}.cfargotunnel.com"
+import {
+  for_each = var.coming_soon_records
+  to       = cloudflare_dns_record.coming_soon[each.key]
+  id       = "${var.zone_id}/${each.value.id}"
 }
 
-# The deploy path; Access-protected, service token only. Needed before seeding.
-resource "cloudflare_dns_record" "ssh" {
-  zone_id = cloudflare_zone.piviki.id
-  name    = var.hosts.ssh
-  type    = "CNAME"
-  content = local.tunnel_target
-  proxied = true
-  ttl     = 1
-  comment = "piviki-infra: Tunnel SSH for the deploy user"
-}
+resource "cloudflare_dns_record" "coming_soon" {
+  for_each = var.coming_soon_records
 
-# Added only after the first librarian is seeded over SSH (AD-5): public_records_enabled = true.
-resource "cloudflare_dns_record" "admin" {
-  count   = var.public_records_enabled ? 1 : 0
   zone_id = cloudflare_zone.piviki.id
-  name    = var.hosts.admin
-  type    = "CNAME"
-  content = local.tunnel_target
-  proxied = true
-  ttl     = 1
-  comment = "piviki-infra: librarian tool, behind Access"
-}
+  name    = each.value.name
+  type    = each.value.type
+  content = each.value.content
+  proxied = each.value.proxied
+  ttl     = each.value.ttl
+  comment = each.value.comment
 
-resource "cloudflare_dns_record" "api" {
-  count   = var.public_records_enabled ? 1 : 0
-  zone_id = cloudflare_zone.piviki.id
-  name    = var.hosts.api
-  type    = "CNAME"
-  content = local.tunnel_target
-  proxied = true
-  ttl     = 1
-  comment = "piviki-infra: /api/v1 only"
+  lifecycle {
+    prevent_destroy = true
+  }
 }

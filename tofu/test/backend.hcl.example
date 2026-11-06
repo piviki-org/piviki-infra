@@ -1,5 +1,6 @@
-# Copy to backend.hcl (git-ignored) and fill in the account id. Test's own key; production's
-# state is tofu/prod/terraform.tfstate and test never reads it.
-bucket    = "piviki-private-eu"
+# Copy to backend.hcl (git-ignored) and fill in the account id. Test's own bucket, reached with
+# r2-tofu-state-token-test; production's state is in piviki-prod-tofu-state-eu, which test's token
+# cannot reach.
+bucket    = "piviki-test-tofu-state-eu"
 key       = "tofu/test/terraform.tfstate"
 endpoints = { s3 = "https://<CLOUDFLARE_ACCOUNT_ID>.eu.r2.cloudflarestorage.com" }

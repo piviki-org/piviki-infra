@@ -56,7 +56,13 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
       - `piviki-test-tofu-state-eu`
       Backups and erasure records go to separate data buckets (`piviki-<env>-private-eu`),
       created by the stories that first write to them, never these.
-- [ ] **One R2 API token per state bucket**: R2 > Manage API tokens > Create (table below).
+- [ ] **One R2 API token per state bucket**: R2 > Manage API tokens > Create (table below). The
+      confirmation page shows a token value, an **Access Key ID** and a **Secret Access Key**; the
+      secret is shown only once. Store only the **Access Key ID** and **Secret Access Key** in the
+      token's Bitwarden item: OpenTofu's S3 backend reads them as `AWS_ACCESS_KEY_ID` and
+      `AWS_SECRET_ACCESS_KEY`. Do not store the token value: OpenTofu does not use it, and the
+      secret is derived from it, so keeping it is one more copy of the same secret. Lost secret:
+      roll or recreate the token.
 - [ ] **One OpenTofu API token per environment**: My Profile > API Tokens > Create custom token
       (table below). Client IP filtering and TTL are optional.
 - [ ] **Tunnel read token for test**: My Profile > API Tokens > Create custom token (table below).
@@ -80,8 +86,8 @@ work.
 
 | Token | Bitwarden | Permissions | Used by |
 |---|---|---|---|
-| `r2-tofu-state-token-prod` | `production` | R2: Object Read & Write, **only** bucket `piviki-prod-tofu-state-eu` | `tofu/prod` state (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) |
-| `r2-tofu-state-token-test` | `test` | R2: Object Read & Write, **only** bucket `piviki-test-tofu-state-eu` | `tofu/test` state; cannot reach production's bucket |
+| `r2-tofu-state-token-prod` | `production` (Access Key ID, Secret Access Key) | R2: Object Read & Write, **only** bucket `piviki-prod-tofu-state-eu` | `tofu/prod` state (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) |
+| `r2-tofu-state-token-test` | `test` (Access Key ID, Secret Access Key) | R2: Object Read & Write, **only** bucket `piviki-test-tofu-state-eu` | `tofu/test` state (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`); cannot reach production's bucket |
 | `cloudflare-tofu-api-token-prod` | `production` | see the permission table | `tofu/prod` (`CLOUDFLARE_API_TOKEN`) |
 | `cloudflare-tofu-api-token-test` | `test` | see the permission table | `tofu/test` (`CLOUDFLARE_API_TOKEN`) |
 | `piviki-test-tunnel-read-token` | `test` | Account: Cloudflare Tunnel: **Read** only | Deploy check's connector count (GitHub `CF_TUNNEL_READ_TOKEN`); production gets its own at the production start |

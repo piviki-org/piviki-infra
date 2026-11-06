@@ -65,12 +65,14 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
         name gives the login domain `<team>.cloudflareaccess.com`, where librarians enter their
         email and PIN; it goes in `tofu/test/terraform.tfvars` as `access_team_name`, and the
         deploy check expects `test-admin` to redirect to it.
-      - Already set up: note the team name (Settings > Custom Pages, or Settings > Team name and
-        domain).
-      - Settings > Authentication > Login methods: if **One-time PIN** is listed, note its id (in
-        the URL when you open it) for `otp_identity_provider_import_id` in
-        `tofu/prod/terraform.tfvars`, so §2.2 imports it instead of creating a second one, which
-        Cloudflare refuses. If it is not listed, leave that unset and §2.2 creates it.
+      - Already set up: note the team name (Zero Trust > Settings > Team name and domain). If it
+        is ever renamed, update `access_team_name` and re-apply `tofu/test`.
+      - Zero Trust > Integrations > Identity providers: if **One-time PIN** is listed, note its id
+        (in the URL when you open it) for `otp_identity_provider_import_id` in
+        `tofu/prod/terraform.tfvars`, so §2.2 imports it instead of creating a second one. If it
+        is not listed, leave that unset and §2.2 creates it. New organisations get Cloudflare's
+        own identity provider by default, not One-time PIN; leave it as it is: Piviki's Access
+        apps allow only One-time PIN (`allowed_idps`).
 
 Every token here is founder use only, kept in Bitwarden under its name; only the Tunnel read token
 is copied anywhere else (GitHub Environment `test`). Production's tokens are never used for test

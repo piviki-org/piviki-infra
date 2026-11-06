@@ -200,8 +200,9 @@ sequenceDiagram
   D->>D: COMMIT is on main; check out its deploy/checks.sh
   D->>A: ssh deploy@ssh-test (service token)
   A->>H: deploy test TAG
-  H->>H: refuse unless checkout clean and deploy/ = COMMIT's
+  H->>H: refuse unless checkout clean
   H->>R: pull the tag
+  H->>H: refuse unless the image's host-runtime label = checkout's fingerprint
   H->>H: start postgres, run migrations
   H->>H: start the stack, wait for health
   H->>H: host-checks.mjs (first-register 404, allowlist, health, Origin, unknown host)

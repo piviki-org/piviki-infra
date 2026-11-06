@@ -250,7 +250,9 @@ printf 'ssh-test.piviki.fi %s\n' "$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_ke
 
 This story changed `piviki-core/deploy/` (the environment name passed to core, the host-name
 checks), so the host's checkout must move to the new commit before its tag deploys (AD-21).
-After the core PR is merged and `build` on `main` is green, note the new tag
+Images built before 2026-11-06 carry no `deploy/` label and are refused, so use a tag built from
+the deploy-label fix's merge commit or later. After the core PR is merged and `build` on `main` is
+green, note the new tag
 `<commit>-<date>`: `______`. On the host:
 
 ```sh
@@ -264,7 +266,8 @@ Then Actions > deploy > Run workflow: environment `test`, that tag.
 The run first checks that the tag's commit is on `main` and checks out that commit, so the deploy
 checks it runs are the tag's own `deploy/checks.sh`. It then SSHes to `deploy@ssh-test.piviki.fi`
 through the Tunnel with the deploy service token; the host refuses the tag unless its checkout is
-clean and has the same `deploy/` (AD-21), then pulls the tag, starts Postgres, runs migrations
+clean, then pulls the tag and refuses it unless the image's `fi.piviki.host-runtime` label equals
+the checkout's fingerprint of `deploy/` (`deploy/fingerprint.sh`; AD-21), then starts Postgres, runs migrations
 (they fail, and the tag is not recorded, if a host name in `core.env` is not a test name), starts
 the stack, runs the
 in-network checks (host names agree with `test`, first-register 404, allowlist 404s, health 200,
@@ -338,8 +341,10 @@ Record each result in Implementation Notes.
 
 ## Later deploys
 
-- Only the app changed (nothing under `deploy/`): run the deploy workflow with the new tag.
-- `deploy/` changed (Compose, Caddy, checks, manifest, an image digest): after merge and build,
+- Only the app changed, or in `deploy/` only `README.md`, `compose.local.yml`, `local-env/`, `test/`
+  or `checks.sh`: run the deploy workflow with the new tag. The host needs nothing: it compares
+  the image's host-runtime label with its checkout, not the commit.
+- Any other file in `deploy/` changed (Compose, Caddy, `deploy.sh`, manifest, an image digest): after merge and build,
   move the checkout first (`runbook-host-setup.md` §4,
   `bootstrap.sh --move-core <commit>`), then deploy the tag. Until then the host refuses it.
 
@@ -347,4 +352,5 @@ Record each result in Implementation Notes.
 
 Redeploy the previous tag (in `/var/lib/piviki/deploys.log` on the host, or the previous GitHub
 deployment record). If its `deploy/` differs from the checkout's, move the checkout to its commit
-first. Schema is fixed forward: a migration is never rolled back on a host.
+first. A tag built before 2026-11-06 has no `deploy/` label and is always refused: roll back
+only to a later one. Schema is fixed forward: a migration is never rolled back on a host.

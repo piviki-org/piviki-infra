@@ -56,33 +56,54 @@ bootstrap places the host's `piviki-core` checkout at the first image's commit),
       - `piviki-test-tofu-state-eu`
       Backups and erasure records go to separate data buckets (`piviki-<env>-private-eu`),
       created by the stories that first write to them, never these.
-- [ ] **One R2 API token per state bucket**: R2 > Manage API tokens > Create, Object Read &
-      Write, **only** that one bucket (EU jurisdiction). Founder use only; never on a host or in
-      GitHub. Test's token cannot reach production's bucket.
-      - `r2-tofu-state-token-prod`: only `piviki-prod-tofu-state-eu`. Bitwarden `production`.
-      - `r2-tofu-state-token-test`: only `piviki-test-tofu-state-eu`. Bitwarden `test`.
-- [ ] **One OpenTofu API token per environment** (My Profile > API Tokens > Create custom token;
-      client IP filtering and TTL optional). Founder use only; production's is never used for
-      test work. Neither gets any R2, API Tokens or Account Settings edit permission.
-      - `cloudflare-tofu-api-token-prod`, Bitwarden `production`, for `tofu/prod`'s shared
-        resources: Account: Access: Organizations, Identity Providers, and Groups: Edit; Account
-        Settings: Read. Zone (piviki.fi only): Zone: Read; DNS: Edit. (The production start adds
-        Tunnel and Access app permissions when it adds production's `core_ingress`.)
-      - `cloudflare-tofu-api-token-test`, Bitwarden `test`, for `tofu/test`: Account: Cloudflare
-        Tunnel: Edit; Access: Apps and Policies: Edit; Access: Service Tokens: Edit; Access:
-        Organizations, Identity Providers, and Groups: Read; Account Settings: Read. Zone
-        (piviki.fi only): Zone: Read; DNS: Edit.
-      Accepted risk (AD-17): Cloudflare cannot limit Tunnel or Access permissions to test's
-      resources, and DNS edit covers the whole zone, so test's token can still change
-      production's routing. Keep it in Bitwarden `test` only and rotate it if it leaks. The
-      environments have separate tokens because that is best practice, even though it holds
-      little value here: there is only one Cloudflare account, so both tokens reach the same
-      account and the same `piviki.fi` zone.
-- [ ] **Tunnel read token for test** `piviki-test-tunnel-read-token`: custom token with only
-      Account: Cloudflare Tunnel: Read, for the deploy check's connector count. Bitwarden `test`;
-      production gets its own at the production start.
-- [ ] Zero Trust: note the team name (Settings > Custom pages, `<team>.cloudflareaccess.com`).
-      If Settings > Authentication already lists a One-time PIN login method, note its id.
+- [ ] **One R2 API token per state bucket**: R2 > Manage API tokens > Create (table below).
+- [ ] **One OpenTofu API token per environment**: My Profile > API Tokens > Create custom token
+      (table below). Client IP filtering and TTL are optional.
+- [ ] **Tunnel read token for test**: My Profile > API Tokens > Create custom token (table below).
+- [ ] **Zero Trust** (runs Access and Tunnels; Cloudflare dashboard > Zero Trust):
+      - First visit only: choose a **team name** and the **Free** plan (up to 50 users). The team
+        name gives the login domain `<team>.cloudflareaccess.com`, where librarians enter their
+        email and PIN; it goes in `tofu/test/terraform.tfvars` as `access_team_name`, and the
+        deploy check expects `test-admin` to redirect to it.
+      - Already set up: note the team name (Settings > Custom Pages, or Settings > Team name and
+        domain).
+      - Settings > Authentication > Login methods: if **One-time PIN** is listed, note its id (in
+        the URL when you open it) for `otp_identity_provider_import_id` in
+        `tofu/prod/terraform.tfvars`, so §2.2 imports it instead of creating a second one, which
+        Cloudflare refuses. If it is not listed, leave that unset and §2.2 creates it.
+
+Every token here is founder use only, kept in Bitwarden under its name; only the Tunnel read token
+is copied anywhere else (GitHub Environment `test`). Production's tokens are never used for test
+work.
+
+| Token | Bitwarden | Permissions | Used by |
+|---|---|---|---|
+| `r2-tofu-state-token-prod` | `production` | R2: Object Read & Write, **only** bucket `piviki-prod-tofu-state-eu` | `tofu/prod` state (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) |
+| `r2-tofu-state-token-test` | `test` | R2: Object Read & Write, **only** bucket `piviki-test-tofu-state-eu` | `tofu/test` state; cannot reach production's bucket |
+| `cloudflare-tofu-api-token-prod` | `production` | see the permission table | `tofu/prod` (`CLOUDFLARE_API_TOKEN`) |
+| `cloudflare-tofu-api-token-test` | `test` | see the permission table | `tofu/test` (`CLOUDFLARE_API_TOKEN`) |
+| `piviki-test-tunnel-read-token` | `test` | Account: Cloudflare Tunnel: **Read** only | Deploy check's connector count (GitHub `CF_TUNNEL_READ_TOKEN`); production gets its own at the production start |
+
+OpenTofu API token permissions (custom token; set exactly these, nothing else):
+
+| Permission | `-prod` | `-test` | Why |
+|---|---|---|---|
+| Account: Access: Organizations, Identity Providers, and Groups | Edit | Read | Prod owns the shared One-time PIN login method; test only uses its id |
+| Account: Account Settings | Read | Read | The provider looks up the account |
+| Zone (`piviki.fi` only): Zone | Read | Read | Prod imports the zone; test finds it |
+| Zone (`piviki.fi` only): DNS | Edit | Edit | Prod imports the coming-soon records; test adds `ssh-test`, `test-admin`, `test-api` |
+| Account: Cloudflare Tunnel | — | Edit | Test's Tunnel and its routes |
+| Account: Access: Apps and Policies | — | Edit | Access on `test-admin` and `ssh-test` |
+| Account: Access: Service Tokens | — | Edit | Test's deploy service token |
+
+Neither gets any R2, API Tokens or Account Settings edit permission. The production start adds
+Tunnel and Access app permissions to `-prod` when it adds production's `core_ingress`.
+
+Accepted risk (AD-17): Cloudflare cannot limit Tunnel or Access permissions to test's resources,
+and DNS edit covers the whole zone, so test's token can still change production's routing. Keep it
+in Bitwarden `test` only and rotate it if it leaks. The environments have separate tokens because
+that is best practice, even though it holds little value here: there is only one Cloudflare
+account, so both tokens reach the same account and the same `piviki.fi` zone.
 
 ### 2.2 Production's shared state: zone, coming-soon records, login method (no change)
 

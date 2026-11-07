@@ -231,7 +231,7 @@ flowchart LR
   b --> c["Cloudflare tokens<br/>+ tofu/prod: shared, no change<br/>+ tofu/test: Tunnel, Access, ssh record"]
   c --> d["Fill /etc/piviki/*.env"]
   d --> e["GitHub Environment<br/>vars + secrets"]
-  e --> f["First deploy<br/>(no public records yet)"]
+  e --> f["Start the Tunnel by hand,<br/>first deploy<br/>(no public records yet)"]
   f --> g["Seed first librarian<br/>over SSH"]
   g --> h["tofu/test: admin + api records"]
   h --> i["Deploy again with public checks,<br/>then verification"]
@@ -240,21 +240,11 @@ flowchart LR
 The first librarian is seeded **before** the `admin` and `api` records exist, so there is never a
 public moment with no account. Steps c to i are in [`docs/runbook-first-deploy.md`](docs/runbook-first-deploy.md).
 
-**Known gap: the first deploy on a fresh host.** `cloudflared` is part of core's Compose stack,
-which only a deploy starts, and the deploy itself comes in through the Tunnel. Before the first
-deploy, a founder starts `cloudflared` alone on the host:
-
-```sh
-sudo bash -c '
-printf "CORE_TAG=<tag to deploy>\nENVIRONMENT=<test|production>\n" >/root/first-tunnel.env
-docker compose --env-file /root/first-tunnel.env -f /opt/piviki/core/deploy/compose.yml up -d --no-deps cloudflared
-rm /root/first-tunnel.env'
-```
-
-Compose needs the two values only to read the file; the Tunnel token comes from
-`/etc/piviki/cloudflared.env`. Once the Tunnel shows Healthy, run the deploy. The runbook step
-and a lasting fix (moving `cloudflared` and Postgres out of core's stack is being considered)
-are still to come.
+**The first deploy on a fresh host needs the Tunnel started by hand.** `cloudflared` is part of
+core's Compose stack, which only a deploy starts, and the deploy itself comes in through the
+Tunnel. [`docs/runbook-first-deploy.md`](docs/runbook-first-deploy.md) §5 starts `cloudflared`
+alone before the first deploy. A lasting fix (moving `cloudflared` and Postgres out of core's
+stack is being considered) is still to come.
 
 ## Running OpenTofu
 

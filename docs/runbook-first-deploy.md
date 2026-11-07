@@ -250,8 +250,8 @@ printf 'ssh-test.piviki.fi %s\n' "$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_ke
 
 This story changed `piviki-core/deploy/` (the environment name passed to core, the host-name
 checks), so the host's checkout must move to the new commit before its tag deploys (AD-21).
-Images built before 2026-11-06 carry no `deploy/` label and are refused, so use a tag built from
-the deploy-label fix's merge commit or later. After the core PR is merged and `build` on `main` is
+Images built before 2026-11-06 carry no host-runtime label and are refused, so use a tag built
+from the fingerprint fix's merge commit or later. After the core PR is merged and `build` on `main` is
 green, note the new tag
 `<commit>-<date>`: `______`. On the host:
 
@@ -260,6 +260,28 @@ sudo git -C /opt/piviki/infra pull --ff-only     # only if piviki-infra's bootst
 sudo /opt/piviki/infra/bootstrap/bootstrap.sh --move-core <commit>
 sudo /opt/piviki/infra/bootstrap/bootstrap.sh --check
 ```
+
+**Start the Tunnel once, by hand.** `cloudflared` is part of core's Compose stack, which only a
+deploy starts, and the deploy itself comes in through the Tunnel: on a fresh host the first run
+fails with `websocket: bad handshake`. Start `cloudflared` alone first. Compose needs `CORE_TAG`
+and `ENVIRONMENT` only to read the file, so a throwaway env file gives them; the Tunnel token
+still comes from `/etc/piviki/cloudflared.env`, and nothing else starts (`--no-deps`).
+
+```sh
+sudo bash -c '
+printf "CORE_TAG=<tag>\nENVIRONMENT=test\n" >/root/first-tunnel.env
+docker compose --env-file /root/first-tunnel.env -f /opt/piviki/core/deploy/compose.yml up -d --no-deps cloudflared
+rm /root/first-tunnel.env
+docker compose -p piviki logs --tail 20 cloudflared'
+```
+
+- [ ] The logs show `Registered tunnel connection`, and Zero Trust > Networks > Tunnels shows
+      `piviki-test` Healthy with 1 connector.
+
+The deploy then brings up the whole stack in the same Compose project; `cloudflared`'s
+definition is unchanged, so it keeps running and the one-connector check sees one. After the
+first deploy, Docker restarts the stack at boot (`restart: unless-stopped`), so this step is
+never needed again on this host.
 
 Then Actions > deploy > Run workflow: environment `test`, that tag.
 

@@ -7,10 +7,11 @@ deploy script and its checks) lives with the app in
 commit names its whole host runtime (AD-21). The patron site, later, is static on Cloudflare and
 shares this repository's Cloudflare setup.
 
-> **Status:** story 1.1 (the tracer bullet) on the **test** environment: the AWS host is
-> bootstrapped as `test`; production's shared OpenTofu state, test's state and the first deploy
-> are still to be run end to end, following the runbooks in [`docs/`](docs/). Production (OVH)
-> starts later, in `epic-soft-open`.
+> **Status (2026-11-06):** story 1.1 (the tracer bullet) runs on the **test** environment. The
+> AWS host is bootstrapped as `test`. Production's shared OpenTofu state and test's state are
+> applied, and core is deployed to test through its Tunnel. The rest of
+> [`docs/runbook-first-deploy.md`](docs/runbook-first-deploy.md) (public records, verification)
+> finishes the story. Production (OVH) starts later, in `epic-soft-open`.
 
 ## Principles
 
@@ -21,8 +22,11 @@ shares this repository's Cloudflare setup.
   in `/etc/piviki/` on that host, never in a repository or an image.
 - **One host runtime version per host (AD-21).** The bootstrap clones `piviki-core` root-owned
   to `/opt/piviki/core` at a commit a founder names; sudoers points at that checkout's deploy
-  script. A deploy only names the image tag and refuses one whose `deploy/` differs from the
-  checkout. Only a founder moves the checkout (`bootstrap.sh --move-core`).
+  script. A deploy only names the image tag, and the host refuses the tag unless the image's
+  host-runtime fingerprint (`fi.piviki.host-runtime`, from `piviki-core/deploy/fingerprint.sh`)
+  matches the checkout. An app-only change therefore deploys with nothing done on the host. Only a
+  founder moves the checkout (`bootstrap.sh --move-core`), when a file the host reads in `deploy/`
+  changed.
 - **Each service sees only its own secrets.** One root-owned env file per service.
 - **Hosts never build.** CI builds the core image; a host only pulls a tagged image.
 - **Cloudflare as code, servers by hand.** OpenTofu manages Cloudflare (DNS, Tunnel, Access).
@@ -94,6 +98,7 @@ On a host, next to this repository's checkout at `/opt/piviki/infra`:
 ├── caddy/Caddyfile           host and path rules
 ├── env-manifest              exactly the files under /etc/piviki and their keys
 ├── deploy.sh                 the deploy user's only command (sudoers names this path)
+├── fingerprint.sh            the host-runtime fingerprint deploy.sh compares with the image
 ├── host-checks.mjs           in-network checks after each deploy
 └── piviki-compose            founder helper, linked from /usr/local/sbin
 /etc/piviki/*.env             one root-owned env file per service, from env-manifest
@@ -193,7 +198,7 @@ sequenceDiagram
   F->>B: push to main
   B->>B: typecheck, tests
   B->>R: push piviki-core:COMMIT-DATE
-  opt the commit changed deploy/
+  opt the commit changed a file the host reads in deploy/
     F->>H: bootstrap.sh --move-core COMMIT (founder over SSH)
   end
   F->>D: run workflow (environment, TAG)
@@ -212,8 +217,9 @@ sequenceDiagram
 ```
 
 Rollback is a deploy of the previous tag, which is listed in `/var/lib/piviki/deploys.log` on the
-host and in the GitHub deployment records. If that tag's `deploy/` differs, a founder moves the
-checkout to its commit first. Schema changes are only ever fixed forward.
+host and in the GitHub deployment records. If that tag's host-runtime fingerprint differs, a
+founder moves the checkout to its commit first. Tags built before 2026-11-06 carry no fingerprint
+and are refused. Schema changes are only ever fixed forward.
 
 ### Setting up a host, in order
 
@@ -233,6 +239,85 @@ flowchart LR
 
 The first librarian is seeded **before** the `admin` and `api` records exist, so there is never a
 public moment with no account. Steps c to i are in [`docs/runbook-first-deploy.md`](docs/runbook-first-deploy.md).
+
+**Known gap: the first deploy on a fresh host.** `cloudflared` is part of core's Compose stack,
+which only a deploy starts, and the deploy itself comes in through the Tunnel. Before the first
+deploy, a founder starts `cloudflared` alone on the host:
+
+```sh
+sudo bash -c '
+printf "CORE_TAG=<tag to deploy>\nENVIRONMENT=<test|production>\n" >/root/first-tunnel.env
+docker compose --env-file /root/first-tunnel.env -f /opt/piviki/core/deploy/compose.yml up -d --no-deps cloudflared
+rm /root/first-tunnel.env'
+```
+
+Compose needs the two values only to read the file; the Tunnel token comes from
+`/etc/piviki/cloudflared.env`. Once the Tunnel shows Healthy, run the deploy. The runbook step
+and a lasting fix (moving `cloudflared` and Postgres out of core's stack is being considered)
+are still to come.
+
+## Running OpenTofu
+
+OpenTofu runs only from a founder's machine, never in CI. Each environment is its own root
+(`tofu/prod`, `tofu/test`), with its own state bucket, R2 token, state passphrase and Cloudflare
+API token. Never load one environment's credentials in a terminal you use for the other.
+
+**Once per root:** install OpenTofu 1.13.2, then copy the two example files. They are
+git-ignored, because they hold the account id and the librarian emails.
+
+```sh
+cd tofu/test                                   # or tofu/prod
+cp backend.hcl.example backend.hcl             # your Cloudflare account id in the R2 endpoint
+cp terraform.tfvars.example terraform.tfvars   # account id, zone and login-method ids, emails
+```
+
+`tofu/test` takes `zone_id` and `otp_identity_provider_id` from `tofu -chdir=tofu/prod output`.
+The other founder needs the same `terraform.tfvars`, so keep its current copy in Bitwarden.
+
+**Every session:** load the four values from Bitwarden (collection `production` or `test`):
+
+| Env var | Bitwarden item | Used for |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | `r2-tofu-state-token-<env>`, username | reading and locking the state in R2 |
+| `AWS_SECRET_ACCESS_KEY` | `r2-tofu-state-token-<env>`, password | the same |
+| `TF_VAR_state_passphrase` | `tofu-state-passphrase-<env>`, password | encrypting and decrypting the state |
+| `CLOUDFLARE_API_TOKEN` | `cloudflare-tofu-api-token-<env>`, password | reading and changing Cloudflare |
+
+```sh
+read -rs "AWS_ACCESS_KEY_ID?R2 Access Key ID: " && export AWS_ACCESS_KEY_ID; echo
+read -rs "AWS_SECRET_ACCESS_KEY?R2 Secret Access Key: " && export AWS_SECRET_ACCESS_KEY; echo
+read -rs "TF_VAR_state_passphrase?state passphrase: " && export TF_VAR_state_passphrase; echo
+read -rs "CLOUDFLARE_API_TOKEN?Cloudflare token: " && export CLOUDFLARE_API_TOKEN; echo
+```
+
+These are zsh's `read` prompts; in bash, use `read -rsp "prompt: " VAR`.
+
+**Run:**
+
+```sh
+tofu init -backend-config=backend.hcl -input=false   # first time, and after a provider change
+tofu plan                                            # read every line before applying
+tofu apply                                           # shows the plan again; answer yes only if it matches
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY TF_VAR_state_passphrase CLOUDFLARE_API_TOKEN
+```
+
+**Rules:**
+- **Production's plan** touches only shared resources and should be **No changes**, apart from a
+  change you meant to make. Anything that would replace or destroy the zone, the coming-soon
+  records or the login method: stop.
+- **Test's plan** only adds, changes or destroys resources named `piviki-test…` or on test hosts.
+- **Never change these resources in the Cloudflare dashboard.** The next `apply` reverts the
+  change, and `plan` shows it as drift until then.
+- **Each passphrase must be kept.** Losing it means losing that state.
+
+**Common changes:**
+
+| Change | In `terraform.tfvars` | Expected plan |
+|---|---|---|
+| Add or remove a librarian's PIN access on test | `librarian_emails` | 1 to change (the librarians policy) |
+| Publish test's admin and api names (once the first librarian is seeded) | `public_records_enabled = true` | 2 to add (the two CNAMEs) |
+
+A librarian also needs a Payload account, which a signed-in librarian creates in the admin.
 
 ## Secrets
 
